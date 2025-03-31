@@ -597,7 +597,7 @@ const BeamCalculator: React.FC = () => {
                     value={parameters.beamType} 
                     onValueChange={(value) => handleSelectChange('beamType', value)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="bg-white text-gray-900">
                       <SelectValue placeholder="Select beam type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -676,7 +676,7 @@ const BeamCalculator: React.FC = () => {
                           value={load.type} 
                           onValueChange={(value) => handleLoadChange(load.id, 'type', value)}
                         >
-                          <SelectTrigger id={`loadType-${load.id}`}>
+                          <SelectTrigger id={`loadType-${load.id}`} className="bg-white text-gray-900">
                             <SelectValue placeholder="Select load type" />
                           </SelectTrigger>
                           <SelectContent>
