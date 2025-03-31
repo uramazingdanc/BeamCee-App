@@ -592,12 +592,12 @@ const BeamCalculator: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="input-group">
-                  <Label htmlFor="beamType">Beam Type</Label>
+                  <Label htmlFor="beamType" className="text-black font-medium">Beam Type</Label>
                   <Select 
                     value={parameters.beamType} 
                     onValueChange={(value) => handleSelectChange('beamType', value)}
                   >
-                    <SelectTrigger className="bg-white text-gray-900">
+                    <SelectTrigger className="bg-white text-black">
                       <SelectValue placeholder="Select beam type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -648,7 +648,7 @@ const BeamCalculator: React.FC = () => {
               
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <Label>Loads</Label>
+                  <Label className="text-black font-medium">Loads</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addLoad} className="flex items-center gap-1">
                     <PlusCircle className="w-4 h-4" /> Add Load
                   </Button>
@@ -657,7 +657,7 @@ const BeamCalculator: React.FC = () => {
                 {parameters.loads.map((load, index) => (
                   <div key={load.id} className="space-y-2 p-3 border rounded-md">
                     <div className="flex justify-between items-center">
-                      <h4 className="text-sm font-medium">Load {index + 1}</h4>
+                      <h4 className="text-sm font-medium text-black">Load {index + 1}</h4>
                       <Button 
                         type="button" 
                         variant="ghost" 
@@ -671,12 +671,12 @@ const BeamCalculator: React.FC = () => {
                     
                     <div className="grid grid-cols-1 gap-2">
                       <div className="input-group">
-                        <Label htmlFor={`loadType-${load.id}`}>Load Type</Label>
+                        <Label htmlFor={`loadType-${load.id}`} className="text-black font-medium">Load Type</Label>
                         <Select 
                           value={load.type} 
                           onValueChange={(value) => handleLoadChange(load.id, 'type', value)}
                         >
-                          <SelectTrigger id={`loadType-${load.id}`} className="bg-white text-gray-900">
+                          <SelectTrigger id={`loadType-${load.id}`} className="bg-white text-black">
                             <SelectValue placeholder="Select load type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -687,7 +687,7 @@ const BeamCalculator: React.FC = () => {
                       </div>
                       
                       <div className="input-group">
-                        <Label htmlFor={`loadMagnitude-${load.id}`}>
+                        <Label htmlFor={`loadMagnitude-${load.id}`} className="text-black font-medium">
                           {load.type === 'point-load' ? 'Load Magnitude (N)' : 'Load Intensity (N/m)'}
                         </Label>
                         <Input 
@@ -696,6 +696,7 @@ const BeamCalculator: React.FC = () => {
                           value={load.magnitude} 
                           onChange={(e) => handleLoadChange(load.id, 'magnitude', e.target.value)}
                           min="0"
+                          className="text-black bg-white"
                         />
                       </div>
                       
