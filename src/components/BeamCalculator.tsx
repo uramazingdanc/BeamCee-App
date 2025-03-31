@@ -674,10 +674,13 @@ const BeamCalculator: React.FC = () => {
                         <Label htmlFor={`loadType-${load.id}`} className="text-black font-medium">Load Type</Label>
                         <Select 
                           value={load.type} 
+                          defaultValue={load.type}
                           onValueChange={(value) => handleLoadChange(load.id, 'type', value)}
                         >
                           <SelectTrigger id={`loadType-${load.id}`} className="bg-white text-black">
-                            <SelectValue placeholder="Select load type" />
+                            <SelectValue placeholder="Select load type">
+                              {load.type === 'point-load' ? 'Point Load' : 'Uniform Load'}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="point-load">Point Load</SelectItem>
