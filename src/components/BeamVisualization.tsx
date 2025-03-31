@@ -68,7 +68,7 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
     ctx.stroke();
     ctx.setLineDash([]);
     
-    // Draw supports
+    // Draw supports based on beam type
     if (beamType === 'simply-supported') {
       // Left support (triangle)
       ctx.beginPath();
@@ -104,6 +104,34 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         ctx.lineTo(startX - 10, beamY + i);
         ctx.stroke();
       }
+    } else if (beamType === 'fixed') {
+      // Fixed support (left)
+      ctx.beginPath();
+      ctx.moveTo(startX, beamY - 20);
+      ctx.lineTo(startX, beamY + 20);
+      ctx.stroke();
+      
+      // Hatching to indicate fixed support (left)
+      for (let i = -20; i <= 20; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(startX, beamY + i);
+        ctx.lineTo(startX - 10, beamY + i);
+        ctx.stroke();
+      }
+      
+      // Fixed support (right)
+      ctx.beginPath();
+      ctx.moveTo(startX + beamLength * xScale, beamY - 20);
+      ctx.lineTo(startX + beamLength * xScale, beamY + 20);
+      ctx.stroke();
+      
+      // Hatching to indicate fixed support (right)
+      for (let i = -20; i <= 20; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(startX + beamLength * xScale, beamY + i);
+        ctx.lineTo(startX + beamLength * xScale + 10, beamY + i);
+        ctx.stroke();
+      }
     }
     
     // Draw loads
@@ -132,7 +160,7 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         ctx.fillStyle = '#000000';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${load.magnitude} N`, loadX, beamY - 45);
+        ctx.fillText(`${load.magnitude} kN`, loadX, beamY - 45);
         ctx.fillStyle = '#ff1ba7';
       } else if (load.type === 'uniform-load') {
         const startLoadX = startX + (load.startPosition || 0) * xScale;
@@ -170,7 +198,7 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         ctx.fillStyle = '#000000';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`${load.magnitude} N/m`, (startLoadX + endLoadX) / 2, beamY - 50);
+        ctx.fillText(`${load.magnitude} kN/m`, (startLoadX + endLoadX) / 2, beamY - 50);
         ctx.fillStyle = '#ff1ba7';
       }
     });
@@ -225,7 +253,7 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
     // Note about scale
     ctx.fillStyle = '#666666';
     ctx.font = '10px Arial';
-    ctx.fillText('Note: Deflection is scaled for visibility', startX, beamY + 100);
+    ctx.fillText('Note: Deflection is scaled for visibility (in mm)', startX, beamY + 100);
   }, [beamLength, beamType, loads, deflectionPoints]);
 
   return (
