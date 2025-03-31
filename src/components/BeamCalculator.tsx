@@ -74,7 +74,7 @@ const BeamCalculator: React.FC = () => {
     setParameters({
       ...parameters,
       loads: parameters.loads.map(load => 
-        load.id === id ? { ...load, [field]: typeof value === 'string' ? value : parseFloat(value) || 0 } : load
+        load.id === id ? { ...load, [field]: typeof value === 'string' ? parseFloat(value) || 0 : value } : load
       )
     });
   };
