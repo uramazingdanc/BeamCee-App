@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -8,22 +8,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import HomeButton from './HomeButton';
+import { PlusCircle, MinusCircle, Save } from 'lucide-react';
+import BeamVisualization from './BeamVisualization';
+
+interface Load {
+  id: string;
+  type: string;
+  magnitude: number;
+  position?: number;
+  startPosition?: number;
+  endPosition?: number;
+}
 
 interface BeamParameters {
   length: number;
   elasticModulus: number;
   momentOfInertia: number;
   beamType: string;
-  loadType: string;
-  loadMagnitude: number;
-  loadPosition: number;
-  loadLength?: number;
+  loads: Load[];
 }
 
 interface CalculationResults {
   maxDeflection: number;
   maxSlope: number;
   steps: Array<{title: string, description: string, formula?: string, result?: string}>;
+  deflectionPoints: Array<{x: number, y: number}>;
+  slopePoints: Array<{x: number, y: number}>;
 }
 
 const BeamCalculator: React.FC = () => {
@@ -32,10 +42,14 @@ const BeamCalculator: React.FC = () => {
     elasticModulus: 200000,
     momentOfInertia: 4 * Math.pow(10, -5),
     beamType: 'simply-supported',
-    loadType: 'point-load',
-    loadMagnitude: 10000,
-    loadPosition: 2.5,
-    loadLength: 0
+    loads: [
+      { 
+        id: crypto.randomUUID(), 
+        type: 'point-load', 
+        magnitude: 10000, 
+        position: 2.5 
+      }
+    ]
   });
   
   const [results, setResults] = useState<CalculationResults | null>(null);
@@ -56,209 +70,514 @@ const BeamCalculator: React.FC = () => {
     });
   };
 
-  const calculateSimplySupported = (params: BeamParameters): CalculationResults => {
-    const { length, elasticModulus, momentOfInertia, loadMagnitude, loadPosition } = params;
-    const EI = elasticModulus * momentOfInertia;
-    
-    let maxDeflection = 0;
-    let maxSlope = 0;
-    let steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
-    
-    if (params.loadType === 'point-load') {
-      const a = loadPosition;
-      const b = length - a;
-      
-      // Calculate max deflection for point load
-      maxDeflection = (loadMagnitude * a * b * Math.sqrt(3)) / (27 * EI * length);
-      maxSlope = (loadMagnitude * a * b) / (6 * EI * length);
-      
-      steps = [
-        {
-          title: "Step 1: Calculate Reaction Forces",
-          description: "Determine the reaction forces at the supports using equilibrium equations.",
-          formula: "R₁ = P × b/L, R₂ = P × a/L",
-          result: `R₁ = ${(loadMagnitude * b / length).toFixed(2)} N, R₂ = ${(loadMagnitude * a / length).toFixed(2)} N`
-        },
-        {
-          title: "Step 2: Determine Bending Moment Diagram",
-          description: "Calculate the bending moment equation for the real beam.",
-          formula: "M(x) = R₁×x for 0≤x≤a, M(x) = R₁×x - P×(x-a) for a≤x≤L",
-          result: "Bending moment diagram created"
-        },
-        {
-          title: "Step 3: Construct Conjugate Beam",
-          description: "Create a conjugate beam with the same length and convert supports accordingly. Simply supported beam remains simply supported in conjugate beam.",
-          result: "Conjugate beam constructed"
-        },
-        {
-          title: "Step 4: Apply M/EI as Load on Conjugate Beam",
-          description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
-          formula: "w_c(x) = M(x)/EI",
-          result: "Conjugate beam loaded with M/EI"
-        },
-        {
-          title: "Step 5: Calculate Slope and Deflection",
-          description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
-          formula: "δ_max = (P×a×b×√3)/(27×EI×L), θ_max = (P×a×b)/(6×EI×L)",
-          result: `Maximum deflection = ${maxDeflection.toExponential(4)} m, Maximum slope = ${maxSlope.toExponential(4)} rad`
-        }
-      ];
-    } else if (params.loadType === 'uniform-load') {
-      // Calculate max deflection for uniform load
-      maxDeflection = (5 * loadMagnitude * Math.pow(length, 4)) / (384 * EI);
-      maxSlope = (loadMagnitude * Math.pow(length, 3)) / (24 * EI);
-      
-      steps = [
-        {
-          title: "Step 1: Calculate Reaction Forces",
-          description: "For uniform load, reactions are equal at both supports.",
-          formula: "R₁ = R₂ = wL/2",
-          result: `R₁ = R₂ = ${(loadMagnitude * length / 2).toFixed(2)} N`
-        },
-        {
-          title: "Step 2: Determine Bending Moment Diagram",
-          description: "Calculate the bending moment equation for the real beam under uniform load.",
-          formula: "M(x) = (wL/2)×x - (w×x²)/2 for 0≤x≤L",
-          result: "Bending moment diagram created"
-        },
-        {
-          title: "Step 3: Construct Conjugate Beam",
-          description: "Create a conjugate beam with the same length. Simply supported beam remains simply supported in conjugate beam.",
-          result: "Conjugate beam constructed"
-        },
-        {
-          title: "Step 4: Apply M/EI as Load on Conjugate Beam",
-          description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
-          formula: "w_c(x) = M(x)/EI",
-          result: "Conjugate beam loaded with M/EI"
-        },
-        {
-          title: "Step 5: Calculate Slope and Deflection",
-          description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
-          formula: "δ_max = (5wL⁴)/(384EI), θ_max = (wL³)/(24EI)",
-          result: `Maximum deflection = ${maxDeflection.toExponential(4)} m, Maximum slope = ${maxSlope.toExponential(4)} rad`
-        }
-      ];
-    }
-    
-    return {
-      maxDeflection,
-      maxSlope,
-      steps
-    };
+  const handleLoadChange = (id: string, field: string, value: string | number) => {
+    setParameters({
+      ...parameters,
+      loads: parameters.loads.map(load => 
+        load.id === id ? { ...load, [field]: typeof value === 'string' ? value : parseFloat(value) || 0 } : load
+      )
+    });
   };
 
-  const calculateCantilever = (params: BeamParameters): CalculationResults => {
-    const { length, elasticModulus, momentOfInertia, loadMagnitude, loadPosition } = params;
-    const EI = elasticModulus * momentOfInertia;
+  const addLoad = () => {
+    const newLoad: Load = { 
+      id: crypto.randomUUID(), 
+      type: 'point-load', 
+      magnitude: 10000, 
+      position: parameters.length / 2 
+    };
     
-    let maxDeflection = 0;
-    let maxSlope = 0;
-    let steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
-    
-    if (params.loadType === 'point-load') {
-      // For cantilever with point load at the end
-      if (loadPosition === length) {
-        maxDeflection = (loadMagnitude * Math.pow(length, 3)) / (3 * EI);
-        maxSlope = (loadMagnitude * Math.pow(length, 2)) / (2 * EI);
-      } else {
-        // For point load at arbitrary position
-        const a = loadPosition;
-        maxDeflection = (loadMagnitude * Math.pow(a, 2) * (3 * length - a)) / (6 * EI);
-        maxSlope = (loadMagnitude * a * (2 * length - a)) / (2 * EI);
-      }
-      
-      steps = [
-        {
-          title: "Step 1: Calculate Reaction Forces",
-          description: "For a cantilever beam with a point load, calculate the reaction force and moment at the fixed end.",
-          formula: "R = P, M = P×a",
-          result: `R = ${loadMagnitude.toFixed(2)} N, M = ${(loadMagnitude * loadPosition).toFixed(2)} N·m`
-        },
-        {
-          title: "Step 2: Determine Bending Moment Diagram",
-          description: "Calculate the bending moment equation for the real beam.",
-          formula: "M(x) = P(a-x) for 0≤x≤a, M(x) = 0 for a≤x≤L",
-          result: "Bending moment diagram created"
-        },
-        {
-          title: "Step 3: Construct Conjugate Beam",
-          description: "Create a conjugate beam where the fixed end becomes free and free end becomes fixed.",
-          result: "Conjugate beam constructed"
-        },
-        {
-          title: "Step 4: Apply M/EI as Load on Conjugate Beam",
-          description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
-          formula: "w_c(x) = M(x)/EI",
-          result: "Conjugate beam loaded with M/EI"
-        },
-        {
-          title: "Step 5: Calculate Slope and Deflection",
-          description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
-          formula: loadPosition === length ? 
-            "δ_max = (PL³)/(3EI), θ_max = (PL²)/(2EI)" : 
-            "δ_max = (Pa²(3L-a))/(6EI), θ_max = (Pa(2L-a))/(2EI)",
-          result: `Maximum deflection = ${maxDeflection.toExponential(4)} m, Maximum slope = ${maxSlope.toExponential(4)} rad`
-        }
-      ];
-    } else if (params.loadType === 'uniform-load') {
-      // Calculate max deflection for uniform load on cantilever
-      maxDeflection = (loadMagnitude * Math.pow(length, 4)) / (8 * EI);
-      maxSlope = (loadMagnitude * Math.pow(length, 3)) / (6 * EI);
-      
-      steps = [
-        {
-          title: "Step 1: Calculate Reaction Forces",
-          description: "For a cantilever beam with uniform load, calculate the reaction force and moment at the fixed end.",
-          formula: "R = wL, M = wL²/2",
-          result: `R = ${(loadMagnitude * length).toFixed(2)} N, M = ${(loadMagnitude * Math.pow(length, 2) / 2).toFixed(2)} N·m`
-        },
-        {
-          title: "Step 2: Determine Bending Moment Diagram",
-          description: "Calculate the bending moment equation for the real beam under uniform load.",
-          formula: "M(x) = w(L-x)²/2 for 0≤x≤L",
-          result: "Bending moment diagram created"
-        },
-        {
-          title: "Step 3: Construct Conjugate Beam",
-          description: "Create a conjugate beam where the fixed end becomes free and free end becomes fixed.",
-          result: "Conjugate beam constructed"
-        },
-        {
-          title: "Step 4: Apply M/EI as Load on Conjugate Beam",
-          description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
-          formula: "w_c(x) = M(x)/EI",
-          result: "Conjugate beam loaded with M/EI"
-        },
-        {
-          title: "Step 5: Calculate Slope and Deflection",
-          description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
-          formula: "δ_max = (wL⁴)/(8EI), θ_max = (wL³)/(6EI)",
-          result: `Maximum deflection = ${maxDeflection.toExponential(4)} m, Maximum slope = ${maxSlope.toExponential(4)} rad`
-        }
-      ];
+    setParameters({
+      ...parameters,
+      loads: [...parameters.loads, newLoad]
+    });
+  };
+
+  const removeLoad = (id: string) => {
+    if (parameters.loads.length <= 1) {
+      toast.error("At least one load is required");
+      return;
     }
     
+    setParameters({
+      ...parameters,
+      loads: parameters.loads.filter(load => load.id !== id)
+    });
+  };
+
+  const calculateReactions = (params: BeamParameters, loadIndex: number): { R1: number, R2: number, M1?: number } => {
+    const { length, beamType, loads } = params;
+    const load = loads[loadIndex];
+    
+    if (beamType === 'simply-supported') {
+      if (load.type === 'point-load' && load.position !== undefined) {
+        const a = load.position;
+        const b = length - a;
+        const R1 = (load.magnitude * b) / length;
+        const R2 = (load.magnitude * a) / length;
+        return { R1, R2 };
+      } else if (load.type === 'uniform-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const loadLength = endPos - startPos;
+        const loadCenter = startPos + loadLength / 2;
+        
+        // For uniform load over a segment
+        const totalLoad = load.magnitude * loadLength;
+        const R1 = totalLoad * (length - loadCenter) / length;
+        const R2 = totalLoad * loadCenter / length;
+        return { R1, R2 };
+      }
+    } else if (beamType === 'cantilever') {
+      if (load.type === 'point-load' && load.position !== undefined) {
+        const R1 = load.magnitude;
+        const M1 = load.magnitude * load.position;
+        return { R1, R2: 0, M1 };
+      } else if (load.type === 'uniform-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const loadLength = endPos - startPos;
+        const loadCenter = startPos + loadLength / 2;
+        
+        // For uniform load over a segment
+        const totalLoad = load.magnitude * loadLength;
+        const R1 = totalLoad;
+        const M1 = totalLoad * loadCenter;
+        return { R1, R2: 0, M1 };
+      }
+    }
+    
+    // Default case
+    return { R1: 0, R2: 0 };
+  };
+
+  const calculateTotalReactions = (params: BeamParameters): { R1: number, R2: number, M1?: number } => {
+    const totalReactions = { R1: 0, R2: 0, M1: 0 };
+    
+    params.loads.forEach((_, index) => {
+      const reactions = calculateReactions(params, index);
+      totalReactions.R1 += reactions.R1;
+      totalReactions.R2 += reactions.R2;
+      totalReactions.M1 = (totalReactions.M1 || 0) + (reactions.M1 || 0);
+    });
+    
+    return totalReactions;
+  };
+
+  const calculateBendingMoment = (params: BeamParameters, x: number): number => {
+    const { beamType, loads } = params;
+    let totalMoment = 0;
+    
+    if (beamType === 'simply-supported') {
+      const { R1 } = calculateTotalReactions(params);
+      
+      // Moment contribution from reaction R1
+      totalMoment += R1 * x;
+      
+      // Moment contributions from each load
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          if (x > load.position) {
+            totalMoment -= load.magnitude * (x - load.position);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || params.length;
+          
+          if (x >= startPos) {
+            const w = load.magnitude;
+            if (x <= endPos) {
+              // Portion of distributed load up to x
+              const loadLength = x - startPos;
+              totalMoment -= w * loadLength * loadLength / 2;
+            } else {
+              // Full distributed load contribution
+              const loadLength = endPos - startPos;
+              const loadCenter = startPos + loadLength / 2;
+              totalMoment -= w * loadLength * (x - loadCenter);
+            }
+          }
+        }
+      }
+    } else if (beamType === 'cantilever') {
+      // For cantilever, moment contributions from each load
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          if (x <= load.position) {
+            totalMoment += load.magnitude * (load.position - x);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || params.length;
+          
+          if (x <= endPos) {
+            const w = load.magnitude;
+            if (x <= startPos) {
+              // Full distributed load contribution
+              const loadLength = endPos - startPos;
+              const loadCenter = startPos + loadLength / 2;
+              totalMoment += w * loadLength * (loadCenter - x);
+            } else {
+              // Partial distributed load from x to endPos
+              const loadLength = endPos - x;
+              totalMoment += w * loadLength * loadLength / 2;
+            }
+          }
+        }
+      }
+    }
+    
+    return totalMoment;
+  };
+
+  const calculateDeflectionPoints = (params: BeamParameters): Array<{x: number, y: number}> => {
+    const { length, elasticModulus, momentOfInertia } = params;
+    const numPoints = 100;
+    const EI = elasticModulus * momentOfInertia;
+    const points: Array<{x: number, y: number}> = [];
+    
+    for (let i = 0; i <= numPoints; i++) {
+      const x = (i / numPoints) * length;
+      const moment = calculateBendingMoment(params, x);
+      const deflection = calculateDeflectionAt(params, x);
+      points.push({ x, y: deflection });
+    }
+    
+    return points;
+  };
+
+  const calculateSlopePoints = (params: BeamParameters): Array<{x: number, y: number}> => {
+    const { length } = params;
+    const numPoints = 100;
+    const points: Array<{x: number, y: number}> = [];
+    
+    for (let i = 0; i <= numPoints; i++) {
+      const x = (i / numPoints) * length;
+      const slope = calculateSlopeAt(params, x);
+      points.push({ x, y: slope });
+    }
+    
+    return points;
+  };
+
+  const calculateDeflectionAt = (params: BeamParameters, position: number): number => {
+    const { beamType, elasticModulus, momentOfInertia, length, loads } = params;
+    const EI = elasticModulus * momentOfInertia;
+    let totalDeflection = 0;
+    
+    if (beamType === 'simply-supported') {
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          const a = load.position;
+          const L = length;
+          
+          if (position <= a) {
+            // Deflection formula for x ≤ a in a simply supported beam with point load
+            totalDeflection += (load.magnitude * a * position * (L*L - a*a - position*position)) / (6 * EI * L);
+          } else {
+            // Deflection formula for x > a in a simply supported beam with point load
+            totalDeflection += (load.magnitude * position * (L - position) * (L + position - 2*a)) / (6 * EI * L);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || length;
+          const w = load.magnitude;
+          const L = length;
+          
+          // For uniform distributed load over a segment, more complex calculation
+          // This is a simplified approximation
+          if (endPos - startPos >= length) {
+            // Full uniform load
+            totalDeflection += (w * position * (L*L*L - 2*L*position*position + position*position*position)) / (24 * EI * L);
+          } else {
+            // Partial uniform load - more complex calculation would be needed
+            // Simplified approach: treat as equivalent point load at center of distributed load
+            const loadLength = endPos - startPos;
+            const loadCenter = startPos + loadLength / 2;
+            const equivalentPointLoad = w * loadLength;
+            
+            if (position <= loadCenter) {
+              totalDeflection += (equivalentPointLoad * loadCenter * position * (L*L - loadCenter*loadCenter - position*position)) / (6 * EI * L);
+            } else {
+              totalDeflection += (equivalentPointLoad * position * (L - position) * (L + position - 2*loadCenter)) / (6 * EI * L);
+            }
+          }
+        }
+      }
+    } else if (beamType === 'cantilever') {
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          const a = load.position;
+          const L = length;
+          
+          if (position <= a) {
+            // Deflection formula for cantilever with point load (x ≤ a)
+            totalDeflection += (load.magnitude * position * position * (3*a - position)) / (6 * EI);
+          } else {
+            // Deflection formula for cantilever with point load (x > a)
+            totalDeflection += (load.magnitude * a * a * (3*position - a)) / (6 * EI);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || length;
+          const w = load.magnitude;
+          
+          if (endPos - startPos >= length) {
+            // Full uniform load
+            totalDeflection += (w * position * position * (6*length*length - 4*length*position + position*position)) / (24 * EI);
+          } else {
+            // Partial uniform load - simplified approach
+            const loadLength = endPos - startPos;
+            const loadCenter = startPos + loadLength / 2;
+            const equivalentPointLoad = w * loadLength;
+            
+            if (position <= loadCenter) {
+              totalDeflection += (equivalentPointLoad * position * position * (3*loadCenter - position)) / (6 * EI);
+            } else {
+              totalDeflection += (equivalentPointLoad * loadCenter * loadCenter * (3*position - loadCenter)) / (6 * EI);
+            }
+          }
+        }
+      }
+    }
+    
+    return totalDeflection;
+  };
+
+  const calculateSlopeAt = (params: BeamParameters, position: number): number => {
+    const { beamType, elasticModulus, momentOfInertia, length, loads } = params;
+    const EI = elasticModulus * momentOfInertia;
+    let totalSlope = 0;
+    
+    if (beamType === 'simply-supported') {
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          const a = load.position;
+          const L = length;
+          
+          if (position <= a) {
+            // Slope formula for x ≤ a in a simply supported beam with point load
+            totalSlope += (load.magnitude * a * (L*L - position*position - a*a)) / (6 * EI * L);
+          } else {
+            // Slope formula for x > a in a simply supported beam with point load
+            totalSlope += (load.magnitude * (L - position) * (L - position + a - L)) / (6 * EI * L);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || length;
+          const w = load.magnitude;
+          const L = length;
+          
+          // For uniform distributed load over a segment
+          // Simplified approach using equivalent point load
+          const loadLength = endPos - startPos;
+          const loadCenter = startPos + loadLength / 2;
+          const equivalentPointLoad = w * loadLength;
+          
+          if (position <= loadCenter) {
+            totalSlope += (equivalentPointLoad * loadCenter * (L*L - position*position - loadCenter*loadCenter)) / (6 * EI * L);
+          } else {
+            totalSlope += (equivalentPointLoad * (L - position) * (L - position + loadCenter - L)) / (6 * EI * L);
+          }
+        }
+      }
+    } else if (beamType === 'cantilever') {
+      for (const load of loads) {
+        if (load.type === 'point-load' && load.position !== undefined) {
+          const a = load.position;
+          
+          if (position <= a) {
+            // Slope formula for cantilever with point load (x ≤ a)
+            totalSlope += (load.magnitude * position * position) / (2 * EI);
+          } else {
+            // Slope formula for cantilever with point load (x > a)
+            totalSlope += (load.magnitude * a * a) / (2 * EI);
+          }
+        } else if (load.type === 'uniform-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || length;
+          const w = load.magnitude;
+          
+          // Simplified approach using equivalent point load
+          const loadLength = endPos - startPos;
+          const loadCenter = startPos + loadLength / 2;
+          const equivalentPointLoad = w * loadLength;
+          
+          if (position <= loadCenter) {
+            totalSlope += (equivalentPointLoad * position * position) / (2 * EI);
+          } else {
+            totalSlope += (equivalentPointLoad * loadCenter * loadCenter) / (2 * EI);
+          }
+        }
+      }
+    }
+    
+    return totalSlope;
+  };
+
+  const findMaxValues = (points: Array<{x: number, y: number}>): {max: number, position: number} => {
+    let maxAbs = 0;
+    let maxPos = 0;
+    
+    points.forEach(point => {
+      const absValue = Math.abs(point.y);
+      if (absValue > maxAbs) {
+        maxAbs = absValue;
+        maxPos = point.x;
+      }
+    });
+    
+    return { max: maxAbs, position: maxPos };
+  };
+
+  const generateSteps = (params: BeamParameters, deflectionPoints: Array<{x: number, y: number}>, slopePoints: Array<{x: number, y: number}>): Array<{title: string, description: string, formula?: string, result?: string}> => {
+    const { beamType, elasticModulus, momentOfInertia, length, loads } = params;
+    const steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
+    const EI = elasticModulus * momentOfInertia;
+    const reactions = calculateTotalReactions(params);
+    const maxDeflection = findMaxValues(deflectionPoints);
+    const maxSlope = findMaxValues(slopePoints);
+    
+    // Step 1: Calculate Reaction Forces
+    let reactionDesc = "Calculate the reaction forces at the supports using equilibrium equations.";
+    let reactionFormula = "";
+    let reactionResult = "";
+    
+    if (beamType === 'simply-supported') {
+      reactionFormula = loads.length === 1 ? "R₁ = P × b/L, R₂ = P × a/L" : "∑Fy = 0, ∑M = 0";
+      reactionResult = `R₁ = ${reactions.R1.toFixed(2)} N, R₂ = ${reactions.R2.toFixed(2)} N`;
+    } else if (beamType === 'cantilever') {
+      reactionFormula = loads.length === 1 ? "R = P, M = P×a" : "∑Fy = 0, ∑M = 0";
+      reactionResult = `R = ${reactions.R1.toFixed(2)} N, M = ${(reactions.M1 || 0).toFixed(2)} N·m`;
+    }
+    
+    steps.push({
+      title: "Step 1: Calculate Reaction Forces",
+      description: reactionDesc,
+      formula: reactionFormula,
+      result: reactionResult
+    });
+    
+    // Step 2: Determine Bending Moment Diagram
+    let momentDesc = "Calculate the bending moment equation for the real beam.";
+    let momentFormula = "";
+    
+    if (beamType === 'simply-supported') {
+      if (loads.length === 1 && loads[0].type === 'point-load') {
+        momentFormula = "M(x) = R₁×x for 0≤x≤a, M(x) = R₁×x - P×(x-a) for a≤x≤L";
+      } else if (loads.length === 1 && loads[0].type === 'uniform-load') {
+        momentFormula = "M(x) = R₁×x - (w×x²)/2 for 0≤x≤L";
+      } else {
+        momentFormula = "M(x) = R₁×x - ∑ load contributions";
+      }
+    } else if (beamType === 'cantilever') {
+      if (loads.length === 1 && loads[0].type === 'point-load') {
+        momentFormula = "M(x) = P(a-x) for 0≤x≤a, M(x) = 0 for a≤x≤L";
+      } else if (loads.length === 1 && loads[0].type === 'uniform-load') {
+        momentFormula = "M(x) = w(L-x)²/2 for 0≤x≤L";
+      } else {
+        momentFormula = "M(x) = ∑ load contributions";
+      }
+    }
+    
+    steps.push({
+      title: "Step 2: Determine Bending Moment Diagram",
+      description: momentDesc,
+      formula: momentFormula,
+      result: "Bending moment diagram created"
+    });
+    
+    // Step 3: Construct Conjugate Beam
+    steps.push({
+      title: "Step 3: Construct Conjugate Beam",
+      description: `Create a conjugate beam with the same length. ${beamType === 'simply-supported' ? 'Simply supported beam remains simply supported' : 'Fixed end becomes free and free end becomes fixed'} in conjugate beam.`,
+      result: "Conjugate beam constructed"
+    });
+    
+    // Step 4: Apply M/EI as Load on Conjugate Beam
+    steps.push({
+      title: "Step 4: Apply M/EI as Load on Conjugate Beam",
+      description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
+      formula: "w_c(x) = M(x)/EI",
+      result: "Conjugate beam loaded with M/EI"
+    });
+    
+    // Step 5: Calculate Slope and Deflection
+    let deflectionFormula = "";
+    
+    if (beamType === 'simply-supported') {
+      if (loads.length === 1) {
+        if (loads[0].type === 'point-load') {
+          deflectionFormula = "δ_max = (P×a×b×√3)/(27×EI×L), θ_max = (P×a×b)/(6×EI×L)";
+        } else if (loads[0].type === 'uniform-load') {
+          deflectionFormula = "δ_max = (5wL⁴)/(384EI), θ_max = (wL³)/(24EI)";
+        }
+      } else {
+        deflectionFormula = "δ(x) and θ(x) calculated using superposition";
+      }
+    } else if (beamType === 'cantilever') {
+      if (loads.length === 1) {
+        if (loads[0].type === 'point-load' && loads[0].position === length) {
+          deflectionFormula = "δ_max = (PL³)/(3EI), θ_max = (PL²)/(2EI)";
+        } else if (loads[0].type === 'point-load') {
+          deflectionFormula = "δ_max = (Pa²(3L-a))/(6EI), θ_max = (Pa(2L-a))/(2EI)";
+        } else if (loads[0].type === 'uniform-load') {
+          deflectionFormula = "δ_max = (wL⁴)/(8EI), θ_max = (wL³)/(6EI)";
+        }
+      } else {
+        deflectionFormula = "δ(x) and θ(x) calculated using superposition";
+      }
+    }
+    
+    steps.push({
+      title: "Step 5: Calculate Slope and Deflection",
+      description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
+      formula: deflectionFormula,
+      result: `Maximum deflection = ${maxDeflection.max.toExponential(4)} m at x = ${maxDeflection.position.toFixed(2)} m, Maximum slope = ${maxSlope.max.toExponential(4)} rad at x = ${maxSlope.position.toFixed(2)} m`
+    });
+    
+    return steps;
+  };
+
+  const calculateResults = (params: BeamParameters): CalculationResults => {
+    const deflectionPoints = calculateDeflectionPoints(params);
+    const slopePoints = calculateSlopePoints(params);
+    
+    const maxDeflectionData = findMaxValues(deflectionPoints);
+    const maxSlopeData = findMaxValues(slopePoints);
+    
+    const steps = generateSteps(params, deflectionPoints, slopePoints);
+    
     return {
-      maxDeflection,
-      maxSlope,
-      steps
+      maxDeflection: maxDeflectionData.max,
+      maxSlope: maxSlopeData.max,
+      steps,
+      deflectionPoints,
+      slopePoints
     };
   };
 
   const handleCalculate = () => {
     try {
-      let result: CalculationResults;
-      
-      if (parameters.beamType === 'simply-supported') {
-        result = calculateSimplySupported(parameters);
-      } else if (parameters.beamType === 'cantilever') {
-        result = calculateCantilever(parameters);
-      } else {
-        // Default to simply supported if not specified
-        result = calculateSimplySupported(parameters);
+      // Validate load positions
+      for (const load of parameters.loads) {
+        if (load.type === 'point-load' && (load.position === undefined || load.position < 0 || load.position > parameters.length)) {
+          toast.error(`Load position must be between 0 and ${parameters.length}m`);
+          return;
+        }
+        
+        if (load.type === 'uniform-load') {
+          const start = load.startPosition || 0;
+          const end = load.endPosition || parameters.length;
+          
+          if (start < 0 || end > parameters.length || start >= end) {
+            toast.error(`Load range must be valid and within beam length (0 to ${parameters.length}m)`);
+            return;
+          }
+        }
       }
       
+      const result = calculateResults(parameters);
       setResults(result);
       setActiveTab('results');
       toast.success("Calculations completed successfully!");
@@ -274,10 +593,14 @@ const BeamCalculator: React.FC = () => {
       elasticModulus: 200000,
       momentOfInertia: 4 * Math.pow(10, -5),
       beamType: 'simply-supported',
-      loadType: 'point-load',
-      loadMagnitude: 10000,
-      loadPosition: 2.5,
-      loadLength: 0
+      loads: [
+        { 
+          id: crypto.randomUUID(), 
+          type: 'point-load', 
+          magnitude: 10000, 
+          position: 2.5 
+        }
+      ]
     });
     setResults(null);
     setActiveTab('parameters');
@@ -356,51 +679,104 @@ const BeamCalculator: React.FC = () => {
               </div>
               
               <div className="space-y-4">
-                <div className="input-group">
-                  <Label htmlFor="loadType">Load Type</Label>
-                  <Select 
-                    value={parameters.loadType} 
-                    onValueChange={(value) => handleSelectChange('loadType', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select load type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="point-load">Point Load</SelectItem>
-                      <SelectItem value="uniform-load">Uniform Load</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex justify-between items-center">
+                  <Label>Loads</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addLoad} className="flex items-center gap-1">
+                    <PlusCircle className="w-4 h-4" /> Add Load
+                  </Button>
                 </div>
                 
-                <div className="input-group">
-                  <Label htmlFor="loadMagnitude">
-                    {parameters.loadType === 'point-load' ? 'Load Magnitude (N)' : 'Load Intensity (N/m)'}
-                  </Label>
-                  <Input 
-                    id="loadMagnitude" 
-                    name="loadMagnitude" 
-                    type="number" 
-                    value={parameters.loadMagnitude} 
-                    onChange={handleInputChange}
-                    min="0"
-                  />
-                </div>
-                
-                {parameters.loadType === 'point-load' && (
-                  <div className="input-group">
-                    <Label htmlFor="loadPosition">Load Position from Left Support (m)</Label>
-                    <Input 
-                      id="loadPosition" 
-                      name="loadPosition" 
-                      type="number" 
-                      value={parameters.loadPosition} 
-                      onChange={handleInputChange}
-                      min="0"
-                      max={parameters.length}
-                      step="0.1"
-                    />
+                {parameters.loads.map((load, index) => (
+                  <div key={load.id} className="space-y-2 p-3 border rounded-md">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-sm font-medium">Load {index + 1}</h4>
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => removeLoad(load.id)}
+                        className="h-6 w-6 p-0 rounded-full"
+                      >
+                        <MinusCircle className="w-4 h-4 text-red-500" />
+                      </Button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="input-group">
+                        <Label htmlFor={`loadType-${load.id}`}>Load Type</Label>
+                        <Select 
+                          value={load.type} 
+                          onValueChange={(value) => handleLoadChange(load.id, 'type', value)}
+                        >
+                          <SelectTrigger id={`loadType-${load.id}`}>
+                            <SelectValue placeholder="Select load type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="point-load">Point Load</SelectItem>
+                            <SelectItem value="uniform-load">Uniform Load</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="input-group">
+                        <Label htmlFor={`loadMagnitude-${load.id}`}>
+                          {load.type === 'point-load' ? 'Load Magnitude (N)' : 'Load Intensity (N/m)'}
+                        </Label>
+                        <Input 
+                          id={`loadMagnitude-${load.id}`}
+                          type="number" 
+                          value={load.magnitude} 
+                          onChange={(e) => handleLoadChange(load.id, 'magnitude', e.target.value)}
+                          min="0"
+                        />
+                      </div>
+                      
+                      {load.type === 'point-load' && (
+                        <div className="input-group">
+                          <Label htmlFor={`loadPosition-${load.id}`}>Load Position from Left (m)</Label>
+                          <Input 
+                            id={`loadPosition-${load.id}`}
+                            type="number" 
+                            value={load.position} 
+                            onChange={(e) => handleLoadChange(load.id, 'position', e.target.value)}
+                            min="0"
+                            max={parameters.length}
+                            step="0.1"
+                          />
+                        </div>
+                      )}
+                      
+                      {load.type === 'uniform-load' && (
+                        <>
+                          <div className="input-group">
+                            <Label htmlFor={`loadStartPosition-${load.id}`}>Start Position (m)</Label>
+                            <Input 
+                              id={`loadStartPosition-${load.id}`}
+                              type="number" 
+                              value={load.startPosition !== undefined ? load.startPosition : 0} 
+                              onChange={(e) => handleLoadChange(load.id, 'startPosition', e.target.value)}
+                              min="0"
+                              max={parameters.length}
+                              step="0.1"
+                            />
+                          </div>
+                          <div className="input-group">
+                            <Label htmlFor={`loadEndPosition-${load.id}`}>End Position (m)</Label>
+                            <Input 
+                              id={`loadEndPosition-${load.id}`}
+                              type="number" 
+                              value={load.endPosition !== undefined ? load.endPosition : parameters.length} 
+                              onChange={(e) => handleLoadChange(load.id, 'endPosition', e.target.value)}
+                              min="0"
+                              max={parameters.length}
+                              step="0.1"
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             </div>
             
@@ -431,6 +807,16 @@ const BeamCalculator: React.FC = () => {
                       {results.maxSlope.toExponential(4)} rad
                     </p>
                   </div>
+                </div>
+                
+                <div className="p-4 border rounded-lg bg-white">
+                  <h3 className="text-lg font-medium text-gray-700 mb-4">Beam Visualization</h3>
+                  <BeamVisualization 
+                    beamLength={parameters.length}
+                    beamType={parameters.beamType}
+                    loads={parameters.loads}
+                    deflectionPoints={results.deflectionPoints}
+                  />
                 </div>
                 
                 <div className="mt-8">
