@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -438,29 +437,9 @@ const BeamCalculator: React.FC = () => {
     const maxDeflection = findMaxValues(deflectionPoints);
     const maxSlope = findMaxValues(slopePoints);
     
-    // Step 1: Calculate Reaction Forces
-    let reactionDesc = "Calculate the reaction forces at the supports using equilibrium equations.";
-    let reactionFormula = "";
-    let reactionResult = "";
-    
-    if (beamType === 'simply-supported') {
-      reactionFormula = loads.length === 1 ? "R₁ = P × b/L, R₂ = P × a/L" : "∑Fy = 0, ∑M = 0";
-      reactionResult = `R₁ = ${reactions.R1.toFixed(2)} N, R₂ = ${reactions.R2.toFixed(2)} N`;
-    } else if (beamType === 'cantilever') {
-      reactionFormula = loads.length === 1 ? "R = P, M = P×a" : "∑Fy = 0, ∑M = 0";
-      reactionResult = `R = ${reactions.R1.toFixed(2)} N, M = ${(reactions.M1 || 0).toFixed(2)} N·m`;
-    }
-    
-    steps.push({
-      title: "Step 1: Calculate Reaction Forces",
-      description: reactionDesc,
-      formula: reactionFormula,
-      result: reactionResult
-    });
-    
-    // Step 2: Determine Bending Moment Diagram
-    let momentDesc = "Calculate the bending moment equation for the real beam.";
-    let momentFormula = "";
+    // Step 1: Calculate Bending Moment Diagram for the Real Beam
+    let momentDesc = "Calculate the bending moment diagram (BMD) for the real beam under its given loading conditions.";
+    let momentFormula = "M(x) = ∑(F⋅d) where F are forces and d are distances from the section";
     
     if (beamType === 'simply-supported') {
       if (loads.length === 1 && loads[0].type === 'point-load') {
@@ -480,59 +459,48 @@ const BeamCalculator: React.FC = () => {
       }
     }
     
-    steps.push({
-      title: "Step 2: Determine Bending Moment Diagram",
-      description: momentDesc,
-      formula: momentFormula,
-      result: "Bending moment diagram created"
-    });
-    
-    // Step 3: Construct Conjugate Beam
-    steps.push({
-      title: "Step 3: Construct Conjugate Beam",
-      description: `Create a conjugate beam with the same length. ${beamType === 'simply-supported' ? 'Simply supported beam remains simply supported' : 'Fixed end becomes free and free end becomes fixed'} in conjugate beam.`,
-      result: "Conjugate beam constructed"
-    });
-    
-    // Step 4: Apply M/EI as Load on Conjugate Beam
-    steps.push({
-      title: "Step 4: Apply M/EI as Load on Conjugate Beam",
-      description: "The bending moment diagram divided by EI becomes the loading on the conjugate beam.",
-      formula: "w_c(x) = M(x)/EI",
-      result: "Conjugate beam loaded with M/EI"
-    });
-    
-    // Step 5: Calculate Slope and Deflection
-    let deflectionFormula = "";
-    
+    let reactionResult = "";
     if (beamType === 'simply-supported') {
-      if (loads.length === 1) {
-        if (loads[0].type === 'point-load') {
-          deflectionFormula = "δ_max = (P×a×b×√3)/(27×EI×L), θ_max = (P×a×b)/(6×EI×L)";
-        } else if (loads[0].type === 'uniform-load') {
-          deflectionFormula = "δ_max = (5wL⁴)/(384EI), θ_max = (wL³)/(24EI)";
-        }
-      } else {
-        deflectionFormula = "δ(x) and θ(x) calculated using superposition";
-      }
+      reactionResult = `R₁ = ${reactions.R1.toFixed(2)} N, R₂ = ${reactions.R2.toFixed(2)} N`;
     } else if (beamType === 'cantilever') {
-      if (loads.length === 1) {
-        if (loads[0].type === 'point-load' && loads[0].position === length) {
-          deflectionFormula = "δ_max = (PL³)/(3EI), θ_max = (PL²)/(2EI)";
-        } else if (loads[0].type === 'point-load') {
-          deflectionFormula = "δ_max = (Pa²(3L-a))/(6EI), θ_max = (Pa(2L-a))/(2EI)";
-        } else if (loads[0].type === 'uniform-load') {
-          deflectionFormula = "δ_max = (wL⁴)/(8EI), θ_max = (wL³)/(6EI)";
-        }
-      } else {
-        deflectionFormula = "δ(x) and θ(x) calculated using superposition";
-      }
+      reactionResult = `R = ${reactions.R1.toFixed(2)} N, M = ${(reactions.M1 || 0).toFixed(2)} N·m`;
     }
     
     steps.push({
-      title: "Step 5: Calculate Slope and Deflection",
-      description: "Calculate the maximum slope and deflection using conjugate beam theorems.",
-      formula: deflectionFormula,
+      title: "Step 1: Determine the Real Beam's Bending Moment Diagram (BMD)",
+      description: momentDesc,
+      formula: momentFormula,
+      result: `Reaction forces: ${reactionResult}`
+    });
+    
+    // Step 2: Construct the Conjugate Beam
+    let conjugateDesc = "";
+    if (beamType === 'simply-supported') {
+      conjugateDesc = "Create a conjugate beam with the same length. For a simply supported beam, the supports remain simply supported in the conjugate beam.";
+    } else if (beamType === 'cantilever') {
+      conjugateDesc = "Create a conjugate beam with the same length. For a cantilever beam, the fixed end becomes free and the free end becomes fixed in the conjugate beam.";
+    }
+    
+    steps.push({
+      title: "Step 2: Construct the Conjugate Beam",
+      description: conjugateDesc,
+      formula: "wc(x) = M(x)/EI where M(x) is the bending moment at x, E is the elastic modulus, and I is the moment of inertia",
+      result: "Conjugate beam constructed with M/EI as the loading"
+    });
+    
+    // Step 3: Analyze the Conjugate Beam
+    steps.push({
+      title: "Step 3: Analyze the Conjugate Beam",
+      description: "Treat the conjugate beam as a real beam loaded with the M/EI diagram. Calculate the shear forces and bending moments in the conjugate beam.",
+      formula: "Vc(x) = ∑Fc where Fc are the forces on the conjugate beam\nMc(x) = ∑(Fc⋅d) where d are the distances from the section",
+      result: "Shear forces and bending moments calculated for the conjugate beam"
+    });
+    
+    // Step 4: Interpret the Results
+    steps.push({
+      title: "Step 4: Interpret the Results",
+      description: "Apply the conjugate beam theorems: The slope at any point in the real beam equals the shear force at that point in the conjugate beam. The deflection equals the bending moment.",
+      formula: "Slope: θ(x) = Vc(x)\nDeflection: δ(x) = Mc(x)",
       result: `Maximum deflection = ${maxDeflection.max.toExponential(4)} m at x = ${maxDeflection.position.toFixed(2)} m, Maximum slope = ${maxSlope.max.toExponential(4)} rad at x = ${maxSlope.position.toFixed(2)} m`
     });
     
