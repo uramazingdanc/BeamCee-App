@@ -12,8 +12,8 @@ import BeamVisualization from './BeamVisualization';
 
 interface Load {
   id: string;
-  type: string;
-  magnitude: number; // in kN
+  type: string; // Updated to include 'triangular-load'
+  magnitude: number; // in kN (for point load) or kN/m (for distributed loads)
   position?: number; // in m
   startPosition?: number; // in m
   endPosition?: number; // in m
@@ -104,10 +104,10 @@ const BeamCalculator: React.FC = () => {
                 startPosition: undefined,
                 endPosition: undefined
               };
-            } else if (value === 'uniform-load') {
+            } else if (value === 'uniform-load' || value === 'triangular-load') {
               return {
                 ...load,
-                type: 'uniform-load',
+                type: value.toString(),
                 magnitude: load.magnitude,
                 position: undefined,
                 startPosition: 0,
@@ -187,6 +187,19 @@ const BeamCalculator: React.FC = () => {
         const R1 = totalLoad * (length - loadCenter) / length;
         const R2 = totalLoad * loadCenter / length;
         return { R1, R2 };
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const loadLength = endPos - startPos;
+        
+        // For triangular load, the center of gravity is 1/3 from the higher end
+        // Magnitude is at the higher end (endPos)
+        const totalLoad = load.magnitude * loadLength / 2; // Area of triangle = 1/2 * base * height
+        const loadCenter = endPos - loadLength / 3; // Center of gravity is 1/3 from the max load end
+        
+        const R1 = totalLoad * (length - loadCenter) / length;
+        const R2 = totalLoad * loadCenter / length;
+        return { R1, R2 };
       }
     } else if (beamType === 'cantilever') {
       if (load.type === 'point-load' && load.position !== undefined) {
@@ -201,6 +214,18 @@ const BeamCalculator: React.FC = () => {
         
         // For uniform load over a segment
         const totalLoad = load.magnitude * loadLength;
+        const R1 = totalLoad;
+        const M1 = totalLoad * loadCenter;
+        return { R1, R2: 0, M1 };
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const loadLength = endPos - startPos;
+        
+        // For triangular load
+        const totalLoad = load.magnitude * loadLength / 2;
+        const loadCenter = endPos - loadLength / 3; // Center of gravity is 1/3 from the max load end
+        
         const R1 = totalLoad;
         const M1 = totalLoad * loadCenter;
         return { R1, R2: 0, M1 };
@@ -242,6 +267,22 @@ const BeamCalculator: React.FC = () => {
           const M2 = (totalLoad * (loadCenter) * (L - loadCenter)) / (2 * L);
           return { R1, R2, M1, M2 };
         }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const loadLength = endPos - startPos;
+        const w = load.magnitude;
+        const L = length;
+        
+        // Simplified approach for triangular load on fixed beam
+        const totalLoad = w * loadLength / 2;
+        const loadCenter = endPos - loadLength / 3;
+        
+        const R1 = totalLoad / 2;
+        const R2 = totalLoad / 2;
+        const M1 = (totalLoad * (loadCenter) * (L - loadCenter)) / (2 * L);
+        const M2 = (totalLoad * (loadCenter) * (L - loadCenter)) / (2 * L);
+        return { R1, R2, M1, M2 };
       }
     }
     
@@ -469,8 +510,10 @@ const BeamCalculator: React.FC = () => {
     
     for (let i = 0; i <= numPoints; i++) {
       const x = (i / numPoints) * params.length;
-      const slope = calculateSlopeAt(params, x);
-      points.push({ x, y: slope });
+      const slopeRad = calculateSlopeAt(params, x);
+      // Convert radians to degrees
+      const slopeDeg = slopeRad * (180 / Math.PI);
+      points.push({ x, y: slopeDeg });
     }
     
     return points;
@@ -643,6 +686,38 @@ const BeamCalculator: React.FC = () => {
             }
           }
         }
+        else if (load.type === 'triangular-load') {
+          const startPos = load.startPosition || 0;
+          const endPos = load.endPosition || length;
+          const w = load.magnitude; // Maximum intensity at endPos
+          const L = length;
+          const a = startPos;
+          const b = endPos;
+          const c = b - a; // Length of load
+          
+          // Calculate slope for triangular load on simply supported beam
+          if (position <= a) {
+            // Point before the triangular load
+            const totalLoad = w * c / 2;
+            const loadCenter = b - c/3;
+            totalSlope += (totalLoad * (L - loadCenter) * position) / (EI * L);
+          } else if (position <= b) {
+            // Point within the triangular load
+            const x1 = position - a;
+            // Using simplified approach - treating as equivalent point load with adjustment
+            const loadIntensityAtX = w * x1 / c; // Intensity at position
+            const remainingLength = b - position;
+            const remainingLoadArea = loadIntensityAtX * remainingLength / 2;
+            const remainingLoadCenter = position + remainingLength * 2/3;
+            
+            totalSlope += (remainingLoadArea * (L - remainingLoadCenter) * position) / (EI * L);
+          } else {
+            // Point after the triangular load
+            const totalLoad = w * c / 2;
+            const loadCenter = b - c/3;
+            totalSlope += (totalLoad * loadCenter * (L - position)) / (EI * L);
+          }
+        }
       }
     } else if (beamType === 'cantilever') {
       for (const load of loads) {
@@ -680,540 +755,16 @@ const BeamCalculator: React.FC = () => {
             }
           }
         }
-      }
-    } else if (beamType === 'fixed') {
-      for (const load of loads) {
-        if (load.type === 'point-load' && load.position !== undefined) {
-          const a = load.position;
-          const L = length;
-          
-          // Corrected slope formula for fixed beam with point load
-          if (position <= a) {
-            totalSlope += (load.magnitude * a * position * (L - a) * (L - position)) / (6 * EI * L * L);
-          } else {
-            totalSlope += (load.magnitude * a * (L - a) * position * (L - position)) / (6 * EI * L * L);
-          }
-        } else if (load.type === 'uniform-load') {
+        else if (load.type === 'triangular-load') {
           const startPos = load.startPosition || 0;
           const endPos = load.endPosition || length;
           const w = load.magnitude;
-          const L = length;
+          const loadLength = endPos - startPos;
           
-          if (endPos - startPos >= length) {
-            // Full uniform load on fixed beam
-            totalSlope += (w * position * (L - position) * (L - 2 * position)) / (12 * EI * L);
-          } else {
-            // Partial uniform load
-            const loadLength = endPos - startPos;
-            const midPoint = (startPos + endPos) / 2;
-            const totalLoad = w * loadLength;
-            
-            // Simplified approach for partial load on fixed beam
-            if (position <= midPoint) {
-              totalSlope += (totalLoad * position * (L - position) * (L - 2 * position)) / (12 * EI * L * L);
-            } else {
-              totalSlope += -(totalLoad * position * (L - position) * (2 * position - L)) / (12 * EI * L * L);
-            }
-          }
-        }
-      }
-    }
-    
-    return totalSlope;
-  };
-
-  const calculateDeflectionValues = (params: BeamParameters, deflectionPoints: Array<{x: number, y: number}>): DeflectionValues => {
-    const leftEnd = calculateDeflectionAt(params, 0) * 1000; // Convert to mm
-    const rightEnd = calculateDeflectionAt(params, params.length) * 1000; // Convert to mm
-    const midspan = calculateDeflectionAt(params, params.length / 2) * 1000; // Convert to mm
-    
-    let maxDeflection = 0;
-    let maxPosition = 0;
-    
-    deflectionPoints.forEach(point => {
-      const absDeflection = Math.abs(point.y);
-      if (absDeflection > maxDeflection) {
-        maxDeflection = absDeflection;
-        maxPosition = point.x;
-      }
-    });
-    
-    return {
-      leftEnd,
-      rightEnd,
-      midspan,
-      maxValue: maxDeflection,
-      maxPosition
-    };
-  };
-
-  const calculateSlopeValues = (params: BeamParameters, slopePoints: Array<{x: number, y: number}>): SlopeValues => {
-    const leftEnd = calculateSlopeAt(params, 0);
-    const rightEnd = calculateSlopeAt(params, params.length);
-    const midspan = calculateSlopeAt(params, params.length / 2);
-    
-    let maxSlope = 0;
-    let maxPosition = 0;
-    
-    slopePoints.forEach(point => {
-      const absSlope = Math.abs(point.y);
-      if (absSlope > maxSlope) {
-        maxSlope = absSlope;
-        maxPosition = point.x;
-      }
-    });
-    
-    return {
-      leftEnd,
-      rightEnd,
-      midspan,
-      maxValue: maxSlope,
-      maxPosition
-    };
-  };
-
-  const generateSteps = (
-    params: BeamParameters, 
-    deflectionValues: DeflectionValues, 
-    slopeValues: SlopeValues
-  ): Array<{title: string, description: string, formula?: string, result?: string}> => {
-    const { beamType, elasticModulus, momentOfInertia, length, loads } = params;
-    const steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
-    
-    // Convert units for display
-    const E = elasticModulus; // MPa
-    const I = momentOfInertia; // mm⁴
-    const reactions = calculateTotalReactions(params);
-    
-    // Step 1: Calculate Bending Moment Diagram for the Real Beam
-    let momentDesc = "Calculate the bending moment diagram (BMD) for the real beam under its given loading conditions.";
-    let momentFormula = "M(x) = ∑(F⋅d) where F are forces and d are distances from the section";
-    
-    if (beamType === 'simply-supported') {
-      if (loads.length === 1 && loads[0].type === 'point-load') {
-        momentFormula = "M(x) = R₁×x for 0≤x≤a, M(x) = R₁×x - P×(x-a) for a≤x≤L";
-      } else if (loads.length === 1 && loads[0].type === 'uniform-load') {
-        momentFormula = "M(x) = R₁×x - (w×x²)/2 for 0≤x≤L";
-      } else {
-        momentFormula = "M(x) = R₁×x - ∑ load contributions";
-      }
-    } else if (beamType === 'cantilever') {
-      if (loads.length === 1 && loads[0].type === 'point-load') {
-        momentFormula = "M(x) = P(a-x) for 0≤x≤a, M(x) = 0 for a≤x≤L";
-      } else if (loads.length === 1 && loads[0].type === 'uniform-load') {
-        momentFormula = "M(x) = w(L-x)²/2 for 0≤x≤L";
-      } else {
-        momentFormula = "M(x) = ∑ load contributions";
-      }
-    } else if (beamType === 'fixed') {
-      if (loads.length === 1 && loads[0].type === 'point-load') {
-        momentFormula = "M(x) = M₁ + R₁×x - P×(x-a) for a≤x≤L";
-      } else if (loads.length === 1 && loads[0].type === 'uniform-load') {
-        momentFormula = "M(x) = M₁ + R₁×x - (w×x²)/2 for 0≤x≤L";
-      } else {
-        momentFormula = "M(x) = M₁ + R₁×x - ∑ load contributions";
-      }
-    }
-    
-    let reactionResult = "";
-    if (beamType === 'simply-supported') {
-      reactionResult = `R₁ = ${(reactions.R1/1000).toFixed(2)} kN, R₂ = ${(reactions.R2/1000).toFixed(2)} kN`;
-    } else if (beamType === 'cantilever') {
-      reactionResult = `R = ${(reactions.R1/1000).toFixed(2)} kN, M = ${((reactions.M1 || 0)/1000).toFixed(2)} kN·m`;
-    } else if (beamType === 'fixed') {
-      reactionResult = `R₁ = ${(reactions.R1/1000).toFixed(2)} kN, R₂ = ${(reactions.R2/1000).toFixed(2)} kN, M₁ = ${((reactions.M1 || 0)/1000).toFixed(2)} kN·m, M₂ = ${((reactions.M2 || 0)/1000).toFixed(2)} kN·m`;
-    }
-    
-    steps.push({
-      title: "Step 1: Determine the Real Beam's Bending Moment Diagram (BMD)",
-      description: momentDesc,
-      formula: momentFormula,
-      result: `Reaction forces: ${reactionResult}`
-    });
-    
-    // Step 2: Construct the Conjugate Beam
-    let conjugateDesc = "";
-    if (beamType === 'simply-supported') {
-      conjugateDesc = "Create a conjugate beam with the same length. For a simply supported beam, the supports remain simply supported in the conjugate beam.";
-    } else if (beamType === 'cantilever') {
-      conjugateDesc = "Create a conjugate beam with the same length. For a cantilever beam, the fixed end becomes free and the free end becomes fixed in the conjugate beam.";
-    } else if (beamType === 'fixed') {
-      conjugateDesc = "Create a conjugate beam with the same length. For a fixed beam, the fixed ends become free with released constraints in the conjugate beam.";
-    }
-    
-    steps.push({
-      title: "Step 2: Construct the Conjugate Beam",
-      description: conjugateDesc,
-      formula: "wc(x) = M(x)/EI where M(x) is the bending moment at x, E is the elastic modulus in MPa, and I is the moment of inertia in mm⁴",
-      result: `Using E = ${E.toExponential(2)} MPa, I = ${I.toExponential(2)} mm⁴`
-    });
-    
-    // Step 3: Analyze the Conjugate Beam
-    steps.push({
-      title: "Step 3: Analyze the Conjugate Beam",
-      description: "Treat the conjugate beam as a real beam loaded with the M/EI diagram. Calculate the shear forces and bending moments in the conjugate beam.",
-      formula: "Vc(x) = ∑Fc where Fc are the forces on the conjugate beam\nMc(x) = ∑(Fc⋅d) where d are the distances from the section",
-      result: "Shear forces and bending moments calculated for the conjugate beam"
-    });
-    
-    // Step 4: Interpret the Results
-    const deflectionResult = `Maximum deflection = ${deflectionValues.maxValue.toFixed(2)} mm at x = ${deflectionValues.maxPosition.toFixed(2)} m
-Left end deflection = ${deflectionValues.leftEnd.toFixed(2)} mm
-Right end deflection = ${deflectionValues.rightEnd.toFixed(2)} mm
-Midspan deflection = ${deflectionValues.midspan.toFixed(2)} mm`;
-    
-    const slopeResult = `Maximum slope = ${slopeValues.maxValue.toExponential(4)} rad at x = ${slopeValues.maxPosition.toFixed(2)} m
-Left end slope = ${slopeValues.leftEnd.toExponential(4)} rad
-Right end slope = ${slopeValues.rightEnd.toExponential(4)} rad
-Midspan slope = ${slopeValues.midspan.toExponential(4)} rad`;
-    
-    steps.push({
-      title: "Step 4: Interpret the Results",
-      description: "Apply the conjugate beam theorems: The slope at any point in the real beam equals the shear force at that point in the conjugate beam. The deflection equals the bending moment.",
-      formula: "Slope: θ(x) = Vc(x)/EI\nDeflection: δ(x) = Mc(x)/EI",
-      result: `${deflectionResult}\n\n${slopeResult}`
-    });
-    
-    return steps;
-  };
-
-  const calculateResults = (params: BeamParameters): CalculationResults => {
-    const deflectionPoints = calculateDeflectionPoints(params);
-    const slopePoints = calculateSlopePoints(params);
-    
-    const deflectionValues = calculateDeflectionValues(params, deflectionPoints);
-    const slopeValues = calculateSlopeValues(params, slopePoints);
-    
-    const steps = generateSteps(params, deflectionValues, slopeValues);
-    
-    return {
-      deflection: deflectionValues,
-      slope: slopeValues,
-      steps,
-      deflectionPoints,
-      slopePoints
-    };
-  };
-
-  const handleCalculate = () => {
-    try {
-      // Validate load positions
-      for (const load of parameters.loads) {
-        if (load.type === 'point-load' && (load.position === undefined || load.position < 0 || load.position > parameters.length)) {
-          toast.error(`Load position must be between 0 and ${parameters.length}m`);
-          return;
-        }
-        
-        if (load.type === 'uniform-load') {
-          const start = load.startPosition || 0;
-          const end = load.endPosition || parameters.length;
-          
-          if (start < 0 || end > parameters.length || start >= end) {
-            toast.error(`Load range must be valid and within beam length (0 to ${parameters.length}m)`);
-            return;
-          }
-        }
-      }
-      
-      const result = calculateResults(parameters);
-      setResults(result);
-      setActiveTab('results');
-      toast.success("Calculations completed successfully!");
-    } catch (error) {
-      console.error("Calculation error:", error);
-      toast.error("An error occurred during calculation. Please check your inputs.");
-    }
-  };
-
-  const handleReset = () => {
-    setParameters({
-      length: 5,
-      elasticModulus: 200000, // MPa
-      momentOfInertia: 40000000, // mm⁴ (4 * 10^7)
-      beamType: 'simply-supported',
-      loads: [
-        { 
-          id: crypto.randomUUID(), 
-          type: 'point-load', 
-          magnitude: 10, // kN
-          position: 2.5 // m
-        }
-      ]
-    });
-    setResults(null);
-    setActiveTab('parameters');
-    toast.info("Calculator reset to default values");
-  };
-
-  return (
-    <div className="min-h-screen p-6 flex flex-col items-center justify-center">
-      <HomeButton />
-      
-      <div className="w-full max-w-4xl calculator-container">
-        <h1 className="text-2xl font-bold text-center mb-6 text-beamcee-pink">Beam Deflection Calculator</h1>
-        
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="parameters">Parameters</TabsTrigger>
-            <TabsTrigger value="results" disabled={!results}>Results</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="parameters" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="input-group">
-                  <Label htmlFor="beamType" className="text-black font-medium">Beam Type</Label>
-                  <Select 
-                    value={parameters.beamType} 
-                    onValueChange={(value) => handleSelectChange('beamType', value)}
-                  >
-                    <SelectTrigger className="bg-white text-black">
-                      <SelectValue placeholder="Select beam type">
-                        {parameters.beamType === 'simply-supported' ? 'Simply Supported' : 
-                         parameters.beamType === 'cantilever' ? 'Cantilever' : 'Fixed'}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="simply-supported">Simply Supported</SelectItem>
-                      <SelectItem value="cantilever">Cantilever</SelectItem>
-                      <SelectItem value="fixed">Fixed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="input-group">
-                  <Label htmlFor="length">Beam Length (m)</Label>
-                  <Input 
-                    id="length" 
-                    name="length" 
-                    type="number" 
-                    value={parameters.length} 
-                    onChange={handleInputChange} 
-                    step="0.1"
-                    min="0.1"
-                  />
-                </div>
-                
-                <div className="input-group">
-                  <Label htmlFor="elasticModulus">Young's Modulus, E (MPa)</Label>
-                  <Input 
-                    id="elasticModulus" 
-                    name="elasticModulus" 
-                    type="number" 
-                    value={parameters.elasticModulus} 
-                    onChange={handleInputChange}
-                    min="1"
-                  />
-                </div>
-                
-                <div className="input-group">
-                  <Label htmlFor="momentOfInertia">Moment of Inertia, I (mm⁴)</Label>
-                  <Input 
-                    id="momentOfInertia" 
-                    name="momentOfInertia" 
-                    type="number" 
-                    value={parameters.momentOfInertia} 
-                    onChange={handleInputChange}
-                    step="1000"
-                    min="1000"
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <Label className="text-black font-medium">Loads</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addLoad} className="flex items-center gap-1">
-                    <PlusCircle className="w-4 h-4" /> Add Load
-                  </Button>
-                </div>
-                
-                {parameters.loads.map((load, index) => (
-                  <div key={load.id} className="space-y-2 p-3 border rounded-md">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-sm font-medium text-black">Load {index + 1}</h4>
-                      <Button 
-                        type="button" 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => removeLoad(load.id)}
-                        className="h-6 w-6 p-0 rounded-full"
-                      >
-                        <MinusCircle className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 gap-2">
-                      <div className="input-group">
-                        <Label htmlFor={`loadType-${load.id}`} className="text-black font-medium">Load Type</Label>
-                        <Select 
-                          value={load.type} 
-                          defaultValue={load.type}
-                          onValueChange={(value) => handleLoadChange(load.id, 'type', value)}
-                        >
-                          <SelectTrigger id={`loadType-${load.id}`} className="bg-white text-black">
-                            <SelectValue placeholder="Select load type">
-                              {load.type === 'point-load' ? 'Point Load' : 'Uniform Load'}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="point-load">Point Load</SelectItem>
-                            <SelectItem value="uniform-load">Uniform Load</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="input-group">
-                        <Label htmlFor={`loadMagnitude-${load.id}`} className="text-black font-medium">
-                          {load.type === 'point-load' ? 'Load Magnitude (kN)' : 'Load Intensity (kN/m)'}
-                        </Label>
-                        <Input 
-                          id={`loadMagnitude-${load.id}`}
-                          type="number" 
-                          value={load.magnitude} 
-                          onChange={(e) => handleLoadChange(load.id, 'magnitude', e.target.value)}
-                          min="0"
-                          className="text-black bg-white"
-                        />
-                      </div>
-                      
-                      {load.type === 'point-load' && (
-                        <div className="input-group">
-                          <Label htmlFor={`loadPosition-${load.id}`}>Load Position from Left (m)</Label>
-                          <Input 
-                            id={`loadPosition-${load.id}`}
-                            type="number" 
-                            value={load.position} 
-                            onChange={(e) => handleLoadChange(load.id, 'position', e.target.value)}
-                            min="0"
-                            max={parameters.length}
-                            step="0.1"
-                          />
-                        </div>
-                      )}
-                      
-                      {load.type === 'uniform-load' && (
-                        <>
-                          <div className="input-group">
-                            <Label htmlFor={`loadStartPosition-${load.id}`}>Start Position (m)</Label>
-                            <Input 
-                              id={`loadStartPosition-${load.id}`}
-                              type="number" 
-                              value={load.startPosition !== undefined ? load.startPosition : 0} 
-                              onChange={(e) => handleLoadChange(load.id, 'startPosition', e.target.value)}
-                              min="0"
-                              max={parameters.length}
-                              step="0.1"
-                            />
-                          </div>
-                          <div className="input-group">
-                            <Label htmlFor={`loadEndPosition-${load.id}`}>End Position (m)</Label>
-                            <Input 
-                              id={`loadEndPosition-${load.id}`}
-                              type="number" 
-                              value={load.endPosition !== undefined ? load.endPosition : parameters.length} 
-                              onChange={(e) => handleLoadChange(load.id, 'endPosition', e.target.value)}
-                              min="0"
-                              max={parameters.length}
-                              step="0.1"
-                            />
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="flex justify-center mt-6 space-x-4">
-              <Button className="beamcee-btn" onClick={handleCalculate}>
-                Calculate
-              </Button>
-              <Button variant="outline" onClick={handleReset}>
-                Reset
-              </Button>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="results">
-            {results && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-lg">
-                  <div className="p-4 border rounded-lg bg-white">
-                    <h3 className="text-lg font-medium text-gray-700">Maximum Deflection</h3>
-                    <p className="text-2xl font-bold text-beamcee-pink mt-2">
-                      {results.deflection.maxValue.toFixed(2)} mm
-                    </p>
-                    <div className="mt-3 text-sm">
-                      <p>Left End: {results.deflection.leftEnd.toFixed(2)} mm</p>
-                      <p>Midspan: {results.deflection.midspan.toFixed(2)} mm</p>
-                      <p>Right End: {results.deflection.rightEnd.toFixed(2)} mm</p>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 border rounded-lg bg-white">
-                    <h3 className="text-lg font-medium text-gray-700">Maximum Slope</h3>
-                    <p className="text-2xl font-bold text-beamcee-pink mt-2">
-                      {results.slope.maxValue.toExponential(4)} rad
-                    </p>
-                    <div className="mt-3 text-sm">
-                      <p>Left End: {results.slope.leftEnd.toExponential(4)} rad</p>
-                      <p>Midspan: {results.slope.midspan.toExponential(4)} rad</p>
-                      <p>Right End: {results.slope.rightEnd.toExponential(4)} rad</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4 border rounded-lg bg-white">
-                  <h3 className="text-lg font-medium text-gray-700 mb-4">Beam Visualization</h3>
-                  <BeamVisualization 
-                    beamLength={parameters.length}
-                    beamType={parameters.beamType}
-                    loads={parameters.loads}
-                    deflectionPoints={results.deflectionPoints}
-                  />
-                </div>
-                
-                <div className="mt-8">
-                  <h3 className="text-xl font-bold mb-4">Step-by-Step Solution</h3>
-                  <div className="space-y-4">
-                    {results.steps.map((step, index) => (
-                      <div key={index} className="p-4 border rounded-lg bg-white">
-                        <h4 className="text-lg font-medium text-beamcee-pink">{step.title}</h4>
-                        <p className="text-gray-700 mt-2">{step.description}</p>
-                        
-                        {step.formula && (
-                          <div className="mt-2 p-2 bg-gray-50 rounded font-mono text-sm">
-                            {step.formula.split('\n').map((line, i) => (
-                              <div key={i}>{line}</div>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {step.result && (
-                          <div className="mt-2 font-medium">
-                            <p className="font-semibold mb-1">Result:</p>
-                            <pre className="whitespace-pre-wrap text-sm">{step.result}</pre>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="flex justify-center mt-6">
-                  <Button className="beamcee-btn" onClick={() => setActiveTab('parameters')}>
-                    Modify Parameters
-                  </Button>
-                </div>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
-  );
-};
-
-export default BeamCalculator;
+          if (position <= startPos) {
+            // Point before the triangular load
+            const totalLoad = w * loadLength / 2;
+            const loadCenter = endPos - loadLength / 3;
+            totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
+          } else if (position <= endPos) {
+            // Point within the triangular
