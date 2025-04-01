@@ -166,6 +166,26 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         const startLoadX = startX + (load.startPosition || 0) * xScale;
         const endLoadX = startX + (load.endPosition || beamLength) * xScale;
         
+        // Draw interval markers
+        ctx.strokeStyle = '#000000';
+        ctx.setLineDash([3, 3]);
+        
+        // Start interval marker
+        ctx.beginPath();
+        ctx.moveTo(startLoadX, beamY - 60);
+        ctx.lineTo(startLoadX, beamY + 20);
+        ctx.stroke();
+        
+        // End interval marker
+        ctx.beginPath();
+        ctx.moveTo(endLoadX, beamY - 60);
+        ctx.lineTo(endLoadX, beamY + 20);
+        ctx.stroke();
+        
+        // Reset line style
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#ff1ba7';
+        
         // Draw distributed load arrows
         const numArrows = Math.floor((endLoadX - startLoadX) / 20) + 1;
         const arrowSpacing = (endLoadX - startLoadX) / (numArrows - 1 || 1);
@@ -194,10 +214,17 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         ctx.lineTo(endLoadX, beamY - 40);
         ctx.stroke();
         
-        // Draw magnitude text
+        // Draw interval text
         ctx.fillStyle = '#000000';
-        ctx.font = '12px Arial';
+        ctx.font = '10px Arial';
         ctx.textAlign = 'center';
+        
+        // Display start and end positions
+        ctx.fillText(`${load.startPosition || 0} m`, startLoadX, beamY + 35);
+        ctx.fillText(`${load.endPosition || beamLength} m`, endLoadX, beamY + 35);
+        
+        // Draw magnitude text
+        ctx.font = '12px Arial';
         ctx.fillText(`${load.magnitude} kN/m`, (startLoadX + endLoadX) / 2, beamY - 50);
         ctx.fillStyle = '#ff1ba7';
       }
