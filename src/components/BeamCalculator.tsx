@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -89,9 +88,39 @@ const BeamCalculator: React.FC = () => {
   const handleLoadChange = (id: string, field: string, value: string | number) => {
     setParameters({
       ...parameters,
-      loads: parameters.loads.map(load => 
-        load.id === id ? { ...load, [field]: typeof value === 'string' ? parseFloat(value) || 0 : value } : load
-      )
+      loads: parameters.loads.map(load => {
+        if (load.id === id) {
+          // Handle conversion to number for numeric fields
+          const parsedValue = typeof value === 'string' ? parseFloat(value) || 0 : value;
+          
+          // When changing load type, set default values for the other fields
+          if (field === 'type') {
+            if (value === 'point-load') {
+              return {
+                ...load,
+                type: 'point-load',
+                magnitude: load.magnitude,
+                position: parameters.length / 2,
+                startPosition: undefined,
+                endPosition: undefined
+              };
+            } else if (value === 'uniform-load') {
+              return {
+                ...load,
+                type: 'uniform-load',
+                magnitude: load.magnitude,
+                position: undefined,
+                startPosition: 0,
+                endPosition: parameters.length
+              };
+            }
+          }
+          
+          // For regular field updates
+          return { ...load, [field]: parsedValue };
+        }
+        return load;
+      })
     });
   };
 
