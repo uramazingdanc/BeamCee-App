@@ -597,29 +597,23 @@ const BeamCalculator: React.FC = () => {
 
   const calculateSlopeAt = (params: BeamParameters, position: number): number => {
     const calculationParams = convertToCalculationUnits(params);
-    const { beamType, elasticModulus, momentOfInertia, length } = calculationParams;
+    const { beamType, elasticModulus, momentOfInertia, length, loads } = calculationParams;
     const EI = elasticModulus * momentOfInertia;
-    
-    // Using the shear force/EI method for slope calculation
-    const shearForce = calculateShearForce(calculationParams, position);
-    const slope = shearForce / EI;
-    
-    // Now add specific formulas for different beam types
     let totalSlope = 0;
     
     if (beamType === 'simply-supported') {
-      // Using standard formulas for slope calculation
-      for (const load of calculationParams.loads) {
+      for (const load of loads) {
         if (load.type === 'point-load' && load.position !== undefined) {
           const a = load.position;
           const L = length;
           
+          // Corrected slope formula for simply supported beam with point load
           if (position <= a) {
-            // Slope formula for x ≤ a in a simply supported beam with point load
-            totalSlope += (load.magnitude * a * (L*L - position*position - a*a)) / (6 * EI * L);
+            // For position x ≤ a (left of the load)
+            totalSlope += (load.magnitude * a * (L - a) * (L - a - position)) / (6 * EI * L);
           } else {
-            // Slope formula for x > a in a simply supported beam with point load
-            totalSlope += (load.magnitude * (L - position) * (L - position + a - L)) / (6 * EI * L);
+            // For position x > a (right of the load)
+            totalSlope += (load.magnitude * a * a * (position - a)) / (6 * EI * L);
           }
         } else if (load.type === 'uniform-load') {
           const startPos = load.startPosition || 0;
@@ -627,28 +621,39 @@ const BeamCalculator: React.FC = () => {
           const w = load.magnitude;
           const L = length;
           
-          // Simplified approach using equivalent point load
-          const loadLength = endPos - startPos;
-          const loadCenter = startPos + loadLength / 2;
-          const equivalentPointLoad = w * loadLength;
-          
-          if (position <= loadCenter) {
-            totalSlope += (equivalentPointLoad * loadCenter * (L*L - position*position - loadCenter*loadCenter)) / (6 * EI * L);
+          if (endPos - startPos >= length) {
+            // Full uniform load on simply supported beam
+            totalSlope += (w * (L * L * L - 4 * L * position * position + 2 * position * position * position)) / (24 * EI * L);
           } else {
-            totalSlope += (equivalentPointLoad * (L - position) * (L - position + loadCenter - L)) / (6 * EI * L);
+            // Partial uniform load
+            const loadLength = endPos - startPos;
+            const midPoint = (startPos + endPos) / 2;
+            const totalLoad = w * loadLength;
+            
+            if (position <= startPos) {
+              // Point before the distributed load
+              totalSlope += (totalLoad * (position * (L - midPoint) - position * position / 2)) / (EI * L);
+            } else if (position <= endPos) {
+              // Point within the distributed load
+              const x1 = position - startPos;
+              totalSlope += (w * (position * (L - position) - x1 * x1 / 2)) / (EI * L);
+            } else {
+              // Point after the distributed load
+              totalSlope += (totalLoad * (L - position) * (midPoint / L)) / (EI);
+            }
           }
         }
       }
     } else if (beamType === 'cantilever') {
-      for (const load of calculationParams.loads) {
+      for (const load of loads) {
         if (load.type === 'point-load' && load.position !== undefined) {
           const a = load.position;
           
           if (position <= a) {
-            // Slope formula for cantilever with point load (x ≤ a)
-            totalSlope += (load.magnitude * position * position) / (2 * EI);
+            // Corrected slope formula for cantilever with point load (x ≤ a)
+            totalSlope += (load.magnitude * position * (2 * a - position)) / (2 * EI);
           } else {
-            // Slope formula for cantilever with point load (x > a)
+            // Corrected slope formula for cantilever with point load (x > a)
             totalSlope += (load.magnitude * a * a) / (2 * EI);
           }
         } else if (load.type === 'uniform-load') {
@@ -656,28 +661,37 @@ const BeamCalculator: React.FC = () => {
           const endPos = load.endPosition || length;
           const w = load.magnitude;
           
-          // Simplified approach using equivalent point load
-          const loadLength = endPos - startPos;
-          const loadCenter = startPos + loadLength / 2;
-          const equivalentPointLoad = w * loadLength;
-          
-          if (position <= loadCenter) {
-            totalSlope += (equivalentPointLoad * position * position) / (2 * EI);
+          if (endPos - startPos >= length) {
+            // Full uniform load on cantilever
+            totalSlope += (w * position * (2 * length - position)) / (4 * EI);
           } else {
-            totalSlope += (equivalentPointLoad * loadCenter * loadCenter) / (2 * EI);
+            // Partial uniform load
+            const loadLength = endPos - startPos;
+            
+            if (position <= startPos) {
+              // Point before the distributed load
+              totalSlope += (w * loadLength * (2 * (endPos + startPos) / 2 - position)) / (2 * EI);
+            } else if (position <= endPos) {
+              // Point within the distributed load
+              totalSlope += (w * (endPos - position) * (endPos - position)) / (4 * EI);
+            } else {
+              // Point after the distributed load (no slope contribution)
+              totalSlope += 0;
+            }
           }
         }
       }
     } else if (beamType === 'fixed') {
-      for (const load of calculationParams.loads) {
+      for (const load of loads) {
         if (load.type === 'point-load' && load.position !== undefined) {
           const a = load.position;
           const L = length;
           
-          // Fixed beam slope formula for point load
-          totalSlope += (load.magnitude * position * (L - position) * a) / (2 * EI * L);
-          if (position > a) {
-            totalSlope -= (load.magnitude * (position - a) * (position - a)) / (2 * EI);
+          // Corrected slope formula for fixed beam with point load
+          if (position <= a) {
+            totalSlope += (load.magnitude * a * position * (L - a) * (L - position)) / (6 * EI * L * L);
+          } else {
+            totalSlope += (load.magnitude * a * (L - a) * position * (L - position)) / (6 * EI * L * L);
           }
         } else if (load.type === 'uniform-load') {
           const startPos = load.startPosition || 0;
@@ -687,16 +701,18 @@ const BeamCalculator: React.FC = () => {
           
           if (endPos - startPos >= length) {
             // Full uniform load on fixed beam
-            totalSlope += (w * position * (L - position) * (L - position)) / (12 * EI);
+            totalSlope += (w * position * (L - position) * (L - 2 * position)) / (12 * EI * L);
           } else {
-            // Simplified approach for partial load
+            // Partial uniform load
             const loadLength = endPos - startPos;
-            const equivalentPointLoad = w * loadLength;
-            const loadCenter = startPos + loadLength / 2;
+            const midPoint = (startPos + endPos) / 2;
+            const totalLoad = w * loadLength;
             
-            totalSlope += (equivalentPointLoad * position * (L - position) * loadCenter) / (2 * EI * L);
-            if (position > loadCenter) {
-              totalSlope -= (equivalentPointLoad * (position - loadCenter) * (position - loadCenter)) / (2 * EI);
+            // Simplified approach for partial load on fixed beam
+            if (position <= midPoint) {
+              totalSlope += (totalLoad * position * (L - position) * (L - 2 * position)) / (12 * EI * L * L);
+            } else {
+              totalSlope += -(totalLoad * position * (L - position) * (2 * position - L)) / (12 * EI * L * L);
             }
           }
         }
