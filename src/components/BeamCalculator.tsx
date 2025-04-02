@@ -310,7 +310,7 @@ const BeamCalculator: React.FC = () => {
     let totalMoment = 0;
     
     if (beamType === 'simply-supported') {
-      const { R1 } = calculateTotalReactions(calculationParams);\
+      const { R1 } = calculateTotalReactions(calculationParams);
       
       // Moment contribution from reaction R1
       totalMoment += R1 * x;
@@ -767,4 +767,4 @@ const BeamCalculator: React.FC = () => {
             const loadCenter = endPos - loadLength / 3;
             totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
           } else if (position <= endPos) {
-            // Point within the triangular load
+            // Point within the triangular
