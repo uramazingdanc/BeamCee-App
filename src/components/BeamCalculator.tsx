@@ -536,7 +536,7 @@ const BeamCalculator: React.FC = () => {
           
           if (position <= a) {
             // Deflection formula for x ≤ a in a simply supported beam with point load
-            totalDeflection += (load.magnitude * a * position * (L*L - a*a - position*position)) / (6 * EI * L);
+            totalDeflection += (load.magnitude * a * position * (L*L - a*a - position*position)) / (6 * EI * L);\
           } else {
             // Deflection formula for x > a in a simply supported beam with point load
             totalDeflection += (load.magnitude * position * (L - position) * (L + position - 2*a)) / (6 * EI * L);
