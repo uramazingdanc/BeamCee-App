@@ -1,4 +1,3 @@
-
 import { BeamParameters, Load, SlopeValues, DeflectionValues, CalculationResults } from "../types/beam";
 
 // Convert units for calculation
@@ -739,42 +738,4 @@ const prepareCalculationSteps = (
   const EI = params.elasticModulus * 1e6 * params.momentOfInertia * 1e-12;
   steps.push({
     title: "Step 3: Calculate Beam Stiffness (EI)",
-    description: "Beam stiffness is the product of the elastic modulus (E) and moment of inertia (I).",
-    formula: "EI = E × I",
-    result: `EI = ${params.elasticModulus} MPa × ${params.momentOfInertia} mm⁴ = ${EI.toExponential(4)} N·m²`
-  });
-  
-  // Step 4: Maximum Deflection
-  steps.push({
-    title: "Step 4: Determine Maximum Deflection",
-    description: "The maximum deflection occurs at the point where the slope is zero.",
-    result: `Max Deflection = ${maxDeflection.toFixed(2)} mm at x = ${maxDeflectionPosition.toFixed(2)} m`
-  });
-  
-  // Additional step for triangular loads if present
-  if (loads.some(load => load.type === 'triangular-load')) {
-    steps.push({
-      title: "Steps for Triangular Loads",
-      description: `
-1.) Determine the Bending Moment Diagram (BMD):
-For a triangular load, the BMD will be a curved line (often a second- or third-degree curve). You'll need to calculate the bending moment equations along the beam's length.
-The shape of the bending moment diagram is highly dependent on the type of supports that the real beam has. For example, a cantilever beam with a triangular load, will have a different bending moment diagram than a simply supported beam with a triangular load.
-
-2.) Create the M/EI Diagram:
-Divide the bending moment values by the corresponding EI values. This M/EI diagram becomes the "load" on your conjugate beam.
-
-3.) Construct the Conjugate Beam:
-Apply the appropriate support transformations:
-Fixed support (real) becomes free end (conjugate).
-Free end (real) becomes fixed support (conjugate).
-Simple support (real) remains a simple support (conjugate).
-
-4.) Calculate Shear and Moment in the Conjugate Beam:
-Use static equilibrium equations to find the "reactions" (shear and moment) in the conjugate beam.
-The shear force at any point in the conjugate beam represents the slope of the real beam.
-The bending moment at any point in the conjugate beam represents the deflection of the real beam.`
-    });
-  }
-  
-  return steps;
-};
+    description: "Beam stiffness is the product of the elastic modulus (E) and moment
