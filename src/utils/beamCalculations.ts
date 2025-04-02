@@ -1,4 +1,3 @@
-
 import { BeamParameters, Load, SlopeValues, DeflectionValues, CalculationResults } from "../types/beam";
 
 // Convert units for calculation
@@ -980,4 +979,131 @@ export const calculateSlopeAt = (params: BeamParameters, position: number): numb
   }
   
   return totalSlope;
+};
+
+/**
+ * Perform all beam calculations and return comprehensive results
+ */
+export const performCalculations = (params: BeamParameters): CalculationResults => {
+  // Calculate deflection at key points
+  const leftEndDeflection = calculateDeflectionAt(params, 0);
+  const rightEndDeflection = calculateDeflectionAt(params, params.length);
+  const midspanDeflection = calculateDeflectionAt(params, params.length / 2);
+  
+  // Find maximum deflection by sampling multiple points
+  let maxDeflection = midspanDeflection;
+  let maxDeflectionPosition = params.length / 2;
+  
+  const numSamples = 50;
+  for (let i = 0; i <= numSamples; i++) {
+    const position = (i / numSamples) * params.length;
+    const deflection = calculateDeflectionAt(params, position);
+    
+    if (Math.abs(deflection) > Math.abs(maxDeflection)) {
+      maxDeflection = deflection;
+      maxDeflectionPosition = position;
+    }
+  }
+  
+  // Calculate slope at key points
+  const leftEndSlope = calculateSlopeAt(params, 0);
+  const rightEndSlope = calculateSlopeAt(params, params.length);
+  const midspanSlope = calculateSlopeAt(params, params.length / 2);
+  
+  // Find maximum slope
+  let maxSlope = Math.max(Math.abs(leftEndSlope), Math.abs(rightEndSlope), Math.abs(midspanSlope));
+  let maxSlopePosition = Math.abs(leftEndSlope) > Math.abs(rightEndSlope) ? 0 : params.length;
+  
+  if (Math.abs(midspanSlope) > maxSlope) {
+    maxSlope = Math.abs(midspanSlope);
+    maxSlopePosition = params.length / 2;
+  }
+  
+  // Sample more points to find true maximum slope
+  for (let i = 0; i <= numSamples; i++) {
+    const position = (i / numSamples) * params.length;
+    const slope = calculateSlopeAt(params, position);
+    
+    if (Math.abs(slope) > maxSlope) {
+      maxSlope = Math.abs(slope);
+      maxSlopePosition = position;
+    }
+  }
+  
+  // Generate calculation steps for explanation
+  const steps = generateCalculationSteps(params);
+  
+  // Calculate points for plotting deflection and slope curves
+  const deflectionPoints = calculateDeflectionPoints(params);
+  const slopePoints = calculateSlopePoints(params);
+  
+  // Build and return comprehensive results
+  return {
+    deflection: {
+      leftEnd: leftEndDeflection * 1000, // Convert to mm
+      rightEnd: rightEndDeflection * 1000,
+      midspan: midspanDeflection * 1000,
+      maxValue: maxDeflection * 1000,
+      maxPosition: maxDeflectionPosition
+    },
+    slope: {
+      leftEnd: leftEndSlope * (180 / Math.PI), // Convert to degrees
+      rightEnd: rightEndSlope * (180 / Math.PI),
+      midspan: midspanSlope * (180 / Math.PI),
+      maxValue: maxSlope * (180 / Math.PI),
+      maxPosition: maxSlopePosition
+    },
+    steps,
+    deflectionPoints,
+    slopePoints
+  };
+};
+
+/**
+ * Generate step-by-step calculation explanations
+ */
+const generateCalculationSteps = (params: BeamParameters): Array<{title: string, description: string, formula?: string, result?: string}> => {
+  const steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
+  
+  // Step 1: Describe the beam setup
+  steps.push({
+    title: "Beam Configuration",
+    description: `${params.beamType.charAt(0).toUpperCase() + params.beamType.slice(1)} beam with length ${params.length} m.\nElastic modulus (E): ${params.elasticModulus} MPa\nMoment of inertia (I): ${params.momentOfInertia} mm⁴`
+  });
+  
+  // Step 2: Calculate reactions
+  const reactions = calculateTotalReactions(params);
+  steps.push({
+    title: "Support Reactions",
+    description: "Calculate the reactions at the supports based on equilibrium equations.",
+    formula: "∑Forces = 0, ∑Moments = 0",
+    result: `R₁ = ${(reactions.R1/1000).toFixed(2)} kN, R₂ = ${(reactions.R2/1000).toFixed(2)} kN${reactions.M1 ? `, M₁ = ${(reactions.M1/1000).toFixed(2)} kN·m` : ''}${reactions.M2 ? `, M₂ = ${(reactions.M2/1000).toFixed(2)} kN·m` : ''}`
+  });
+  
+  // Step 3: Explain deflection calculation approach
+  let deflectionFormula = "";
+  if (params.beamType === 'simply-supported') {
+    deflectionFormula = "δ = (PL³)/(48EI) for center point load";
+  } else if (params.beamType === 'cantilever') {
+    deflectionFormula = "δ = (PL³)/(3EI) for end point load";
+  } else if (params.beamType === 'fixed') {
+    deflectionFormula = "δ = (PL³)/(192EI) for center point load";
+  }
+  
+  steps.push({
+    title: "Deflection Calculation Method",
+    description: "Using the principle of superposition and integrating the bending moment equation twice to find deflection.",
+    formula: deflectionFormula,
+    result: `Maximum deflection = ${(calculateDeflectionAt(params, params.length/2) * 1000).toFixed(3)} mm at midspan`
+  });
+  
+  // Step 4: Explain slope calculation approach
+  steps.push({
+    title: "Slope Calculation",
+    description: "The slope is calculated by taking the first derivative of the deflection curve.",
+    formula: "θ = dδ/dx",
+    result: `Maximum slope = ${(Math.abs(calculateSlopeAt(params, 0) * (180/Math.PI))).toFixed(4)}° at support`
+  });
+  
+  return steps;
 };
