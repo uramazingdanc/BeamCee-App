@@ -59,164 +59,63 @@ export const calculateReactions = (params: BeamParameters, loadIndex: number): {
       const R2 = (totalLoad * loadCenter) / span;
       const R1 = totalLoad - R2;
       return { R1, R2 };
-    } else if (load.type === 'triangular-load') {
-      const startPos = load.startPosition || 0;
-      const endPos = load.endPosition || length;
+    }
+  
+  // Improved triangular load calculations
+  else if (load.type === 'triangular-load') {
+    const startPos = load.startPosition || 0;
+    const endPos = load.endPosition || length;
+    
+    // Find the overlap of the load with the supported span
+    const overlapStart = Math.max(startPos, leftSupport);
+    const overlapEnd = Math.min(endPos, rightSupport);
+    
+    if (overlapStart >= overlapEnd) {
+      // No overlap between load and supported span
+      return { R1: 0, R2: 0 };
+    }
+    
+    const loadWidth = endPos - startPos;
+    
+    if (beamType === 'simply-supported') {
+      // Calculate total load (area of the triangle)
+      const totalLoad = load.magnitude * loadWidth / 2;
       
-      // Find the overlap of the load with the supported span
-      const overlapStart = Math.max(startPos, leftSupport);
-      const overlapEnd = Math.min(endPos, rightSupport);
+      // Center of gravity of a triangle is at 1/3 from the max value
+      const loadCenter = endPos - loadWidth / 3;
       
-      if (overlapStart >= overlapEnd) {
-        // No overlap between load and supported span
-        return { R1: 0, R2: 0 };
-      }
+      // Adjust for support positions
+      const adjustedCenter = loadCenter - leftSupport;
       
-      const loadLength = endPos - startPos;
-      const overlapLength = overlapEnd - overlapStart;
-      
-      // For triangular load (max at end), center of gravity is at 1/3 from max end
-      const totalLoad = load.magnitude * overlapLength / 2; // Approximate area of triangle portion
-      const loadCenter = overlapEnd - overlapLength / 3 - leftSupport; // Center of gravity relative to left support
-      
-      const R2 = (totalLoad * loadCenter) / span;
+      const R2 = (totalLoad * adjustedCenter) / span;
       const R1 = totalLoad - R2;
       return { R1, R2 };
-    }
-  } else if (beamType === 'cantilever') {
-    // For a cantilever beam, only the left support (fixed end) reacts
-    if (load.type === 'point-load' && load.position !== undefined) {
-      if (load.position < leftSupport) {
-        // Load is before the support (not on the cantilever)
-        return { R1: 0, R2: 0 };
-      }
-      
-      const lever = load.position - leftSupport;
-      const R1 = load.magnitude;
-      const M1 = load.magnitude * lever;
-      return { R1, R2: 0, M1 };
-    } else if (load.type === 'uniform-load') {
-      const startPos = load.startPosition || 0;
-      const endPos = load.endPosition || length;
-      
-      // Find the overlap of the load with the cantilever span
-      const overlapStart = Math.max(startPos, leftSupport);
-      const overlapEnd = Math.min(endPos, length);
-      
-      if (overlapStart >= overlapEnd) {
-        // No overlap between load and cantilever
-        return { R1: 0, R2: 0 };
-      }
-      
-      const loadLength = overlapEnd - overlapStart;
-      const totalLoad = load.magnitude * loadLength;
-      
-      // Center of load relative to support
-      const loadCenter = (overlapStart + overlapEnd) / 2 - leftSupport;
+    } else if (beamType === 'cantilever') {
+      // For cantilever, calculate moment at fixed end
+      const totalLoad = load.magnitude * loadWidth / 2;
+      const loadCenter = endPos - loadWidth / 3;
+      const lever = loadCenter - leftSupport;
       
       const R1 = totalLoad;
-      const M1 = totalLoad * loadCenter;
+      const M1 = totalLoad * lever;
       return { R1, R2: 0, M1 };
-    } else if (load.type === 'triangular-load') {
-      const startPos = load.startPosition || 0;
-      const endPos = load.endPosition || length;
+    } else if (beamType === 'fixed') {
+      // For fixed beam with triangular load
+      const totalLoad = load.magnitude * loadWidth / 2;
+      const loadCenter = endPos - loadWidth / 3;
+      const adjustedCenter = loadCenter - leftSupport;
       
-      // Find the overlap of the load with the cantilever span
-      const overlapStart = Math.max(startPos, leftSupport);
-      const overlapEnd = Math.min(endPos, length);
+      const R1 = totalLoad * (1 - adjustedCenter/span);
+      const R2 = totalLoad * (adjustedCenter/span);
       
-      if (overlapStart >= overlapEnd) {
-        // No overlap between load and cantilever
-        return { R1: 0, R2: 0 };
-      }
-      
-      const overlapLength = overlapEnd - overlapStart;
-      
-      // For triangular load, center of gravity is at 1/3 from max end
-      const totalLoad = load.magnitude * overlapLength / 2;
-      const loadCenter = overlapEnd - overlapLength / 3 - leftSupport;
-      
-      const R1 = totalLoad;
-      const M1 = totalLoad * loadCenter;
-      return { R1, R2: 0, M1 };
-    }
-  } else if (beamType === 'fixed') {
-    // For fixed beam, both supports have moment reactions
-    if (load.type === 'point-load' && load.position !== undefined) {
-      if (load.position < leftSupport || load.position > rightSupport) {
-        // Load is outside the supported span
-        return { R1: 0, R2: 0 };
-      }
-      
-      const a = load.position - leftSupport; // Position relative to left support
-      const L = span; // Span length
-      
-      // For fixed beam with point load
-      const R1 = load.magnitude * (1 - a/L);
-      const R2 = load.magnitude * (a/L);
-      const M1 = -load.magnitude * a * (L - a) * (L - a) / (L * L);
-      const M2 = load.magnitude * a * a * (L - a) / (L * L);
-      return { R1, R2, M1, M2 };
-    } else if (load.type === 'uniform-load') {
-      const startPos = load.startPosition || 0;
-      const endPos = load.endPosition || length;
-      
-      // Find the overlap of the load with the supported span
-      const overlapStart = Math.max(startPos, leftSupport);
-      const overlapEnd = Math.min(endPos, rightSupport);
-      
-      if (overlapStart >= overlapEnd) {
-        // No overlap between load and supported span
-        return { R1: 0, R2: 0 };
-      }
-      
-      const loadLength = overlapEnd - overlapStart;
-      const w = load.magnitude;
+      // Improved moment calculations for triangular load
+      const a = adjustedCenter;
       const L = span;
       
-      if (overlapStart === leftSupport && overlapEnd === rightSupport) {
-        // Full uniform load on fixed beam
-        const R1 = (w * L) / 2;
-        const R2 = (w * L) / 2;
-        const M1 = -(w * L * L) / 12;
-        const M2 = (w * L * L) / 12;
-        return { R1, R2, M1, M2 };
-      } else {
-        // Partial uniform load - simplified approach
-        const totalLoad = w * loadLength;
-        const loadCenter = (overlapStart + overlapEnd) / 2 - leftSupport;
-        const R1 = totalLoad * (1 - loadCenter/L);
-        const R2 = totalLoad * (loadCenter/L);
-        // Simplified moment calculations for partial load
-        const M1 = -w * loadLength * loadCenter * (L - loadCenter) / (2 * L);
-        const M2 = w * loadLength * loadCenter * (L - loadCenter) / (2 * L);
-        return { R1, R2, M1, M2 };
-      }
-    } else if (load.type === 'triangular-load') {
-      const startPos = load.startPosition || 0;
-      const endPos = load.endPosition || length;
+      // Simplified moments based on equivalent point load
+      const M1 = -totalLoad * a * (L - a) * (L - a) / (L * L);
+      const M2 = totalLoad * a * a * (L - a) / (L * L);
       
-      // Find the overlap of the load with the supported span
-      const overlapStart = Math.max(startPos, leftSupport);
-      const overlapEnd = Math.min(endPos, rightSupport);
-      
-      if (overlapStart >= overlapEnd) {
-        // No overlap between load and supported span
-        return { R1: 0, R2: 0 };
-      }
-      
-      const overlapLength = overlapEnd - overlapStart;
-      const w = load.magnitude;
-      const L = span;
-      
-      // Simplified approach for triangular load on fixed beam
-      const totalLoad = w * overlapLength / 2;
-      const loadCenter = overlapEnd - overlapLength / 3 - leftSupport;
-      
-      const R1 = totalLoad * (1 - loadCenter/L);
-      const R2 = totalLoad * (loadCenter/L);
-      const M1 = -totalLoad * loadCenter * (L - loadCenter) / (2 * L);
-      const M2 = totalLoad * loadCenter * (L - loadCenter) / (2 * L);
       return { R1, R2, M1, M2 };
     }
   }
@@ -422,6 +321,47 @@ export const calculateShearForce = (params: BeamParameters, x: number): number =
     }
   }
   
+  // Improved triangular load shear force calculations
+  else if (load.type === 'triangular-load') {
+    const startPos = load.startPosition || 0;
+    const endPos = load.endPosition || length;
+    
+    if (beamType === 'simply-supported' || beamType === 'fixed') {
+      if (x > startPos) {
+        const w = load.magnitude;
+        const loadWidth = endPos - startPos;
+        
+        if (x <= endPos) {
+          // Portion of triangular load up to x
+          // For a triangular load, the partial area is non-linear
+          const x1 = x - startPos;
+          const partialHeight = w * x1 / loadWidth;
+          // Area of partial triangle = 1/2 * base * height
+          totalShear -= partialHeight * x1 / 2;
+        } else {
+          // Full triangular load
+          totalShear -= w * loadWidth / 2;
+        }
+      }
+    } else if (beamType === 'cantilever') {
+      if (x < endPos) {
+        const w = load.magnitude;
+        const loadWidth = endPos - startPos;
+        
+        if (x <= startPos) {
+          // Full load to the right
+          totalShear += w * loadWidth / 2;
+        } else {
+          // Partial load to the right
+          const remainingWidth = endPos - x;
+          const partialHeight = w * remainingWidth / loadWidth;
+          // Area of partial triangle
+          totalShear += partialHeight * remainingWidth / 2;
+        }
+      }
+    }
+  }
+  
   return totalShear;
 };
 
@@ -570,6 +510,78 @@ export const calculateDeflectionAt = (params: BeamParameters, position: number):
             totalDeflection -= (equivalentPointLoad * (position - loadCenter) * (position - loadCenter) * (position - loadCenter)) / (6 * EI);
           }
         }
+      }
+    }
+  }
+  
+  // Improved triangular load deflection calculations
+  else if (load.type === 'triangular-load') {
+    const startPos = load.startPosition || 0;
+    const endPos = load.endPosition || length;
+    const w = load.magnitude; // Maximum intensity
+    const a = startPos;
+    const b = endPos;
+    const loadWidth = b - a;
+    
+    if (beamType === 'simply-supported') {
+      // For triangular load on simply supported beam
+      // Using modified formulas for triangular load (increasing from left to right)
+      const L = length;
+      
+      if (position <= a) {
+        // Before the load starts
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = b - loadWidth / 3;
+        totalDeflection += (totalLoad * position * (L*L - position*position - loadCenter*loadCenter)) / (6 * EI * L);
+      } else if (position <= b) {
+        // Within the load
+        const x1 = position - a;
+        // Complex integration result for position within triangular load
+        totalDeflection += (w * position * (L-position) * (L+position) * loadWidth) / (60 * EI * L) - 
+                           (w * x1 * x1 * x1 * (10*L - 15*position + 6*x1)) / (120 * EI * L * loadWidth);
+      } else {
+        // After the load ends
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = b - loadWidth / 3;
+        totalDeflection += (totalLoad * position * (L-position) * (L+position - 2*loadCenter)) / (6 * EI * L);
+      }
+    } else if (beamType === 'cantilever') {
+      // For triangular load on cantilever beam
+      if (position <= a) {
+        // Before the load starts
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = b - loadWidth / 3;
+        totalDeflection += (totalLoad * position * position * (3*loadCenter - position)) / (6 * EI);
+      } else if (position <= b) {
+        // Within the load
+        // Complex integration for position within triangular load
+        const x1 = position - a;
+        totalDeflection += (w * position * position * position * loadWidth) / (24 * EI) - 
+                           (w * x1 * x1 * x1 * (4*position - x1)) / (24 * EI * loadWidth);
+      } else {
+        // After the load ends
+        // No additional deflection after the load ends on a cantilever
+      }
+    } else if (beamType === 'fixed') {
+      // For triangular load on fixed-fixed beam
+      const L = length;
+      
+      if (position <= a) {
+        // Before the load starts
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = b - loadWidth / 3;
+        totalDeflection += (totalLoad * position * position * (3*L - position) * loadCenter) / (6 * EI * L * L);
+      } else if (position <= b) {
+        // Within the load
+        const x1 = position - a;
+        // Complex integration result for position within triangular load on fixed beam
+        totalDeflection += (w * position * position * (L-position) * (L-position) * loadWidth) / (120 * EI * L * L) - 
+                           (w * x1 * x1 * x1 * position * (L-position)) / (60 * EI * L * L * loadWidth);
+      } else {
+        // After the load ends
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = b - loadWidth / 3;
+        totalDeflection += (totalLoad * position * position * (L-position) * (L-position) * loadCenter) / (6 * EI * L * L * L);
       }
     }
   }
@@ -732,129 +744,4 @@ export const calculateSlopeAt = (params: BeamParameters, position: number): numb
       }
       else if (load.type === 'triangular-load') {
         const startPos = load.startPosition || 0;
-        const endPos = load.endPosition || length;
-        const w = load.magnitude;
-        const loadLength = endPos - startPos;
-        
-        if (position <= startPos) {
-          // Point before the triangular load
-          const totalLoad = w * loadLength / 2;
-          const loadCenter = endPos - loadLength / 3;
-          totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
-        } else if (position <= endPos) {
-          // Point within the triangular load
-          const x1 = position - startPos;
-          const remainingLoad = w * (endPos - position) / 2;
-          const remainingLoadCenter = (position + endPos) / 2;
-          totalSlope += (remainingLoad * (remainingLoadCenter - position)) / (2 * EI);
-        } else {
-          // Point after the triangular load (no slope contribution)
-          totalSlope += 0;
-        }
-      }
-    }
-  }
-  
-  return totalSlope;
-};
-
-export const calculateDeflectionValues = (params: BeamParameters): DeflectionValues => {
-  const leftEnd = calculateDeflectionAt(params, 0);
-  const rightEnd = calculateDeflectionAt(params, params.length);
-  const midspan = calculateDeflectionAt(params, params.length / 2);
-  
-  // Find maximum deflection by sampling points
-  const numSamples = 100;
-  let maxDeflection = leftEnd;
-  let maxPosition = 0;
-  
-  for (let i = 0; i <= numSamples; i++) {
-    const position = (i / numSamples) * params.length;
-    const deflection = calculateDeflectionAt(params, position);
-    
-    if (Math.abs(deflection) > Math.abs(maxDeflection)) {
-      maxDeflection = deflection;
-      maxPosition = position;
-    }
-  }
-  
-  return {
-    leftEnd: leftEnd * 1000, // Convert to mm
-    rightEnd: rightEnd * 1000,
-    midspan: midspan * 1000,
-    maxValue: maxDeflection * 1000,
-    maxPosition
-  };
-};
-
-export const calculateSlopeValues = (params: BeamParameters): SlopeValues => {
-  const leftEndRad = calculateSlopeAt(params, 0);
-  const rightEndRad = calculateSlopeAt(params, params.length);
-  const midspanRad = calculateSlopeAt(params, params.length / 2);
-  
-  // Find maximum slope by sampling points
-  const numSamples = 100;
-  let maxSlope = leftEndRad;
-  let maxPosition = 0;
-  
-  for (let i = 0; i <= numSamples; i++) {
-    const position = (i / numSamples) * params.length;
-    const slope = calculateSlopeAt(params, position);
-    
-    if (Math.abs(slope) > Math.abs(maxSlope)) {
-      maxSlope = slope;
-      maxPosition = position;
-    }
-  }
-  
-  // Convert to degrees
-  const toDegrees = (rad: number) => rad * (180 / Math.PI);
-  
-  return {
-    leftEnd: toDegrees(leftEndRad),
-    rightEnd: toDegrees(rightEndRad),
-    midspan: toDegrees(midspanRad),
-    maxValue: toDegrees(maxSlope),
-    maxPosition
-  };
-};
-
-export const performCalculations = (params: BeamParameters): CalculationResults => {
-  const steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
-  
-  // Step 1: Calculate support reactions
-  const reactions = calculateTotalReactions(params);
-  steps.push({
-    title: "Step 1: Calculate Support Reactions",
-    description: `Calculate the reactions at the supports based on equilibrium equations.`,
-    result: `R1 = ${reactions.R1.toFixed(2)} N, R2 = ${reactions.R2.toFixed(2)} N${reactions.M1 !== undefined ? `, M1 = ${reactions.M1.toFixed(2)} N·m` : ''}${reactions.M2 !== undefined ? `, M2 = ${reactions.M2.toFixed(2)} N·m` : ''}`
-  });
-  
-  // Step 2: Calculate deflection values
-  const deflection = calculateDeflectionValues(params);
-  steps.push({
-    title: "Step 2: Calculate Beam Deflection",
-    description: `Determine the deflection at key points along the beam.`,
-    result: `Max Deflection = ${deflection.maxValue.toFixed(3)} mm at x = ${deflection.maxPosition.toFixed(2)} m`
-  });
-  
-  // Step 3: Calculate slope values
-  const slope = calculateSlopeValues(params);
-  steps.push({
-    title: "Step 3: Calculate Beam Slope",
-    description: `Determine the slope (rotation) at key points along the beam.`,
-    result: `Max Slope = ${slope.maxValue.toFixed(4)}° at x = ${slope.maxPosition.toFixed(2)} m`
-  });
-  
-  // Calculate points for plotting
-  const deflectionPoints = calculateDeflectionPoints(params);
-  const slopePoints = calculateSlopePoints(params);
-  
-  return {
-    deflection,
-    slope,
-    steps,
-    deflectionPoints,
-    slopePoints
-  };
-};
+        const end
