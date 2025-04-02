@@ -15,13 +15,17 @@ interface BeamVisualizationProps {
   beamType: string;
   loads: Load[];
   deflectionPoints: Array<{x: number, y: number}>;
+  leftSupportPosition?: number;
+  rightSupportPosition?: number;
 }
 
 const BeamVisualization: React.FC<BeamVisualizationProps> = ({
   beamLength,
   beamType,
   loads,
-  deflectionPoints
+  deflectionPoints,
+  leftSupportPosition = 0,
+  rightSupportPosition
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -70,68 +74,76 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
     ctx.stroke();
     ctx.setLineDash([]);
     
+    // Use rightSupportPosition if provided, otherwise default to beamLength
+    const actualRightSupportPosition = rightSupportPosition !== undefined ? rightSupportPosition : beamLength;
+    
     // Draw supports based on beam type
     if (beamType === 'simply-supported') {
-      // Left support (triangle)
+      // Left support (triangle) at custom position
+      const leftSupportX = startX + leftSupportPosition * xScale;
       ctx.beginPath();
-      ctx.moveTo(startX, beamY);
-      ctx.lineTo(startX - 15, beamY + 15);
-      ctx.lineTo(startX + 15, beamY + 15);
+      ctx.moveTo(leftSupportX, beamY);
+      ctx.lineTo(leftSupportX - 15, beamY + 15);
+      ctx.lineTo(leftSupportX + 15, beamY + 15);
       ctx.closePath();
       ctx.stroke();
       
-      // Right support (triangle with circle for roller)
+      // Right support (triangle with circle for roller) at custom position
+      const rightSupportX = startX + actualRightSupportPosition * xScale;
       ctx.beginPath();
-      ctx.moveTo(startX + beamLength * xScale, beamY);
-      ctx.lineTo(startX + beamLength * xScale - 15, beamY + 15);
-      ctx.lineTo(startX + beamLength * xScale + 15, beamY + 15);
+      ctx.moveTo(rightSupportX, beamY);
+      ctx.lineTo(rightSupportX - 15, beamY + 15);
+      ctx.lineTo(rightSupportX + 15, beamY + 15);
       ctx.closePath();
       ctx.stroke();
       
       // Roller indication
       ctx.beginPath();
-      ctx.arc(startX + beamLength * xScale, beamY + 20, 5, 0, Math.PI * 2);
+      ctx.arc(rightSupportX, beamY + 20, 5, 0, Math.PI * 2);
       ctx.stroke();
     } else if (beamType === 'cantilever') {
       // Fixed support (left)
+      const fixedSupportX = startX + leftSupportPosition * xScale;
       ctx.beginPath();
-      ctx.moveTo(startX, beamY - 20);
-      ctx.lineTo(startX, beamY + 20);
+      ctx.moveTo(fixedSupportX, beamY - 20);
+      ctx.lineTo(fixedSupportX, beamY + 20);
       ctx.stroke();
       
       // Hatching to indicate fixed support
       for (let i = -20; i <= 20; i += 5) {
         ctx.beginPath();
-        ctx.moveTo(startX, beamY + i);
-        ctx.lineTo(startX - 10, beamY + i);
+        ctx.moveTo(fixedSupportX, beamY + i);
+        ctx.lineTo(fixedSupportX - 10, beamY + i);
         ctx.stroke();
       }
     } else if (beamType === 'fixed') {
       // Fixed support (left)
+      const leftFixedX = startX + leftSupportPosition * xScale;
       ctx.beginPath();
-      ctx.moveTo(startX, beamY - 20);
-      ctx.lineTo(startX, beamY + 20);
+      ctx.moveTo(leftFixedX, beamY - 20);
+      ctx.lineTo(leftFixedX, beamY + 20);
       ctx.stroke();
       
       // Hatching to indicate fixed support (left)
       for (let i = -20; i <= 20; i += 5) {
         ctx.beginPath();
-        ctx.moveTo(startX, beamY + i);
-        ctx.lineTo(startX - 10, beamY + i);
+        ctx.moveTo(leftFixedX, beamY + i);
+        ctx.lineTo(leftFixedX - 10, beamY + i);
         ctx.stroke();
       }
       
       // Fixed support (right)
+      const rightFixedX = startX + actualRightSupportPosition * xScale;
       ctx.beginPath();
-      ctx.moveTo(startX + beamLength * xScale, beamY - 20);
-      ctx.lineTo(startX + beamLength * xScale, beamY + 20);
+      ctx.moveTo(rightFixedX, beamY - 20);
+      ctx.lineTo(rightFixedX, beamY + 20);
       ctx.stroke();
       
       // Hatching to indicate fixed support (right)
       for (let i = -20; i <= 20; i += 5) {
         ctx.beginPath();
-        ctx.moveTo(startX + beamLength * xScale, beamY + i);
-        ctx.lineTo(startX + beamLength * xScale + 10, beamY + i);
+        ctx.moveTo(rightFixedX, beamY + i);
+        ctx.lineTo(rightFixedX + 10, beamY + i);
         ctx.stroke();
       }
     }
@@ -229,6 +241,74 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
         ctx.font = '12px Arial';
         ctx.fillText(`${load.magnitude} kN/m`, (startLoadX + endLoadX) / 2, beamY - 50);
         ctx.fillStyle = '#ff1ba7';
+      } else if (load.type === 'triangular-load' && load.startPosition !== undefined && load.endPosition !== undefined) {
+        const startLoadX = startX + load.startPosition * xScale;
+        const endLoadX = startX + load.endPosition * xScale;
+        
+        // Draw interval markers
+        ctx.strokeStyle = '#000000';
+        ctx.setLineDash([3, 3]);
+        
+        // Start interval marker
+        ctx.beginPath();
+        ctx.moveTo(startLoadX, beamY - 60);
+        ctx.lineTo(startLoadX, beamY + 20);
+        ctx.stroke();
+        
+        // End interval marker
+        ctx.beginPath();
+        ctx.moveTo(endLoadX, beamY - 60);
+        ctx.lineTo(endLoadX, beamY + 20);
+        ctx.stroke();
+        
+        // Reset line style
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#ff1ba7';
+        
+        // Draw triangular load arrows - more arrows near the max load side
+        const numArrows = Math.floor((endLoadX - startLoadX) / 20) + 1;
+        const arrowSpacing = (endLoadX - startLoadX) / (numArrows - 1 || 1);
+        
+        for (let i = 0; i < numArrows; i++) {
+          const loadX = startLoadX + i * arrowSpacing;
+          // Calculate height based on position (linear variation)
+          const ratio = i / (numArrows - 1);
+          const arrowHeight = 5 + ratio * 35; // Height varies from 5 to 40
+          
+          // Draw arrow
+          ctx.beginPath();
+          ctx.moveTo(loadX, beamY - arrowHeight);
+          ctx.lineTo(loadX, beamY - 5);
+          ctx.stroke();
+          
+          // Draw arrowhead
+          ctx.beginPath();
+          ctx.moveTo(loadX, beamY);
+          ctx.lineTo(loadX - 5, beamY - 10);
+          ctx.lineTo(loadX + 5, beamY - 10);
+          ctx.closePath();
+          ctx.fill();
+        }
+        
+        // Draw sloped top line connecting arrows
+        ctx.beginPath();
+        ctx.moveTo(startLoadX, beamY - 5);
+        ctx.lineTo(endLoadX, beamY - 40);
+        ctx.stroke();
+        
+        // Draw interval text
+        ctx.fillStyle = '#000000';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        
+        // Display start and end positions
+        ctx.fillText(`${load.startPosition} m`, startLoadX, beamY + 35);
+        ctx.fillText(`${load.endPosition} m`, endLoadX, beamY + 35);
+        
+        // Draw magnitude text
+        ctx.font = '12px Arial';
+        ctx.fillText(`${load.magnitude} kN/m at end`, endLoadX, beamY - 50);
+        ctx.fillStyle = '#ff1ba7';
       }
     });
     
@@ -285,7 +365,7 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
     ctx.fillStyle = '#666666';
     ctx.font = '10px Arial';
     ctx.fillText('Note: Deflection is scaled for visibility (in mm)', startX, beamY + 100);
-  }, [beamLength, beamType, loads, deflectionPoints]);
+  }, [beamLength, beamType, loads, deflectionPoints, leftSupportPosition, rightSupportPosition]);
 
   return (
     <div className="flex justify-center">

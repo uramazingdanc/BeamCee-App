@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +17,8 @@ const BeamCalculator: React.FC = () => {
     elasticModulus: 200000, // MPa
     momentOfInertia: 40000000, // mm⁴ (4 * 10^7)
     beamType: 'simply-supported',
+    leftSupportPosition: 0,
+    rightSupportPosition: 5,
     loads: [
       { 
         id: crypto.randomUUID(), 
@@ -33,6 +34,39 @@ const BeamCalculator: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+    
+    if (name === 'leftSupportPosition') {
+      const leftPos = parseFloat(value) || 0;
+      const rightPos = parameters.rightSupportPosition || parameters.length;
+      
+      if (leftPos >= rightPos) {
+        toast.error("Left support must be before right support");
+        return;
+      }
+      
+      setParameters({
+        ...parameters,
+        leftSupportPosition: leftPos
+      });
+      return;
+    }
+    
+    if (name === 'rightSupportPosition') {
+      const rightPos = parseFloat(value) || parameters.length;
+      const leftPos = parameters.leftSupportPosition || 0;
+      
+      if (rightPos <= leftPos) {
+        toast.error("Right support must be after left support");
+        return;
+      }
+      
+      setParameters({
+        ...parameters,
+        rightSupportPosition: rightPos
+      });
+      return;
+    }
+    
     setParameters({
       ...parameters,
       [name]: parseFloat(value) || 0
@@ -40,10 +74,28 @@ const BeamCalculator: React.FC = () => {
   };
 
   const handleSelectChange = (name: string, value: string) => {
-    setParameters({
-      ...parameters,
-      [name]: value
-    });
+    if (name === 'beamType') {
+      if (value === 'cantilever') {
+        setParameters({
+          ...parameters,
+          beamType: value,
+          leftSupportPosition: 0,
+          rightSupportPosition: undefined
+        });
+      } else if (value === 'simply-supported' || value === 'fixed') {
+        setParameters({
+          ...parameters,
+          beamType: value,
+          leftSupportPosition: 0,
+          rightSupportPosition: parameters.length
+        });
+      }
+    } else {
+      setParameters({
+        ...parameters,
+        [name]: value
+      });
+    }
   };
 
   const handleLoadChange = (id: string, field: string, value: string | number) => {
@@ -51,10 +103,8 @@ const BeamCalculator: React.FC = () => {
       ...parameters,
       loads: parameters.loads.map(load => {
         if (load.id === id) {
-          // Handle conversion to number for numeric fields
           const parsedValue = typeof value === 'string' ? parseFloat(value) || 0 : value;
           
-          // When changing load type, set default values for the other fields
           if (field === 'type') {
             if (value === 'point-load') {
               return {
@@ -77,7 +127,6 @@ const BeamCalculator: React.FC = () => {
             }
           }
           
-          // For regular field updates
           return { ...load, [field]: parsedValue };
         }
         return load;
@@ -112,25 +161,28 @@ const BeamCalculator: React.FC = () => {
   };
 
   const validateInputs = (): boolean => {
-    // Check beam length
     if (parameters.length <= 0) {
       toast.error("Beam length must be greater than 0");
       return false;
     }
     
-    // Check elastic modulus
     if (parameters.elasticModulus <= 0) {
       toast.error("Elastic modulus must be greater than 0");
       return false;
     }
     
-    // Check moment of inertia
     if (parameters.momentOfInertia <= 0) {
       toast.error("Moment of inertia must be greater than 0");
       return false;
     }
     
-    // Check loads
+    if (parameters.leftSupportPosition !== undefined && parameters.rightSupportPosition !== undefined) {
+      if (parameters.leftSupportPosition >= parameters.rightSupportPosition) {
+        toast.error("Left support must be before right support");
+        return false;
+      }
+    }
+    
     for (const load of parameters.loads) {
       if (load.magnitude <= 0) {
         toast.error("Load magnitude must be greater than 0");
@@ -179,7 +231,6 @@ const BeamCalculator: React.FC = () => {
       return;
     }
     
-    // Create a formatted output for the results
     const output = {
       parameters,
       results
@@ -257,6 +308,8 @@ const BeamCalculator: React.FC = () => {
             beamType={parameters.beamType}
             loads={parameters.loads}
             deflectionPoints={results?.deflectionPoints || []}
+            leftSupportPosition={parameters.leftSupportPosition}
+            rightSupportPosition={parameters.rightSupportPosition}
           />
         </div>
       </div>

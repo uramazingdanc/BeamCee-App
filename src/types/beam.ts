@@ -14,6 +14,8 @@ export interface BeamParameters {
   momentOfInertia: number;
   beamType: string;
   loads: Load[];
+  leftSupportPosition?: number;
+  rightSupportPosition?: number;
 }
 
 export interface SlopeValues {
