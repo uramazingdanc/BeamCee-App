@@ -767,4 +767,4 @@ const BeamCalculator: React.FC = () => {
             const loadCenter = endPos - loadLength / 3;
             totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
           } else if (position <= endPos) {
-            // Point within the triangular load
+            // Point within the triangular
