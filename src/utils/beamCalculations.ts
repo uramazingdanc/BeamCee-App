@@ -740,4 +740,121 @@ export const calculateSlopeAt = (params: BeamParameters, position: number): numb
           // Point before the triangular load
           const totalLoad = w * loadLength / 2;
           const loadCenter = endPos - loadLength / 3;
-          totalSlope += (totalLoad *
+          totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
+        } else if (position <= endPos) {
+          // Point within the triangular load
+          const x1 = position - startPos;
+          const remainingLoad = w * (endPos - position) / 2;
+          const remainingLoadCenter = (position + endPos) / 2;
+          totalSlope += (remainingLoad * (remainingLoadCenter - position)) / (2 * EI);
+        } else {
+          // Point after the triangular load (no slope contribution)
+          totalSlope += 0;
+        }
+      }
+    }
+  }
+  
+  return totalSlope;
+};
+
+export const calculateDeflectionValues = (params: BeamParameters): DeflectionValues => {
+  const leftEnd = calculateDeflectionAt(params, 0);
+  const rightEnd = calculateDeflectionAt(params, params.length);
+  const midspan = calculateDeflectionAt(params, params.length / 2);
+  
+  // Find maximum deflection by sampling points
+  const numSamples = 100;
+  let maxDeflection = leftEnd;
+  let maxPosition = 0;
+  
+  for (let i = 0; i <= numSamples; i++) {
+    const position = (i / numSamples) * params.length;
+    const deflection = calculateDeflectionAt(params, position);
+    
+    if (Math.abs(deflection) > Math.abs(maxDeflection)) {
+      maxDeflection = deflection;
+      maxPosition = position;
+    }
+  }
+  
+  return {
+    leftEnd: leftEnd * 1000, // Convert to mm
+    rightEnd: rightEnd * 1000,
+    midspan: midspan * 1000,
+    maxValue: maxDeflection * 1000,
+    maxPosition
+  };
+};
+
+export const calculateSlopeValues = (params: BeamParameters): SlopeValues => {
+  const leftEndRad = calculateSlopeAt(params, 0);
+  const rightEndRad = calculateSlopeAt(params, params.length);
+  const midspanRad = calculateSlopeAt(params, params.length / 2);
+  
+  // Find maximum slope by sampling points
+  const numSamples = 100;
+  let maxSlope = leftEndRad;
+  let maxPosition = 0;
+  
+  for (let i = 0; i <= numSamples; i++) {
+    const position = (i / numSamples) * params.length;
+    const slope = calculateSlopeAt(params, position);
+    
+    if (Math.abs(slope) > Math.abs(maxSlope)) {
+      maxSlope = slope;
+      maxPosition = position;
+    }
+  }
+  
+  // Convert to degrees
+  const toDegrees = (rad: number) => rad * (180 / Math.PI);
+  
+  return {
+    leftEnd: toDegrees(leftEndRad),
+    rightEnd: toDegrees(rightEndRad),
+    midspan: toDegrees(midspanRad),
+    maxValue: toDegrees(maxSlope),
+    maxPosition
+  };
+};
+
+export const performCalculations = (params: BeamParameters): CalculationResults => {
+  const steps: Array<{title: string, description: string, formula?: string, result?: string}> = [];
+  
+  // Step 1: Calculate support reactions
+  const reactions = calculateTotalReactions(params);
+  steps.push({
+    title: "Step 1: Calculate Support Reactions",
+    description: `Calculate the reactions at the supports based on equilibrium equations.`,
+    result: `R1 = ${reactions.R1.toFixed(2)} N, R2 = ${reactions.R2.toFixed(2)} N${reactions.M1 !== undefined ? `, M1 = ${reactions.M1.toFixed(2)} N·m` : ''}${reactions.M2 !== undefined ? `, M2 = ${reactions.M2.toFixed(2)} N·m` : ''}`
+  });
+  
+  // Step 2: Calculate deflection values
+  const deflection = calculateDeflectionValues(params);
+  steps.push({
+    title: "Step 2: Calculate Beam Deflection",
+    description: `Determine the deflection at key points along the beam.`,
+    result: `Max Deflection = ${deflection.maxValue.toFixed(3)} mm at x = ${deflection.maxPosition.toFixed(2)} m`
+  });
+  
+  // Step 3: Calculate slope values
+  const slope = calculateSlopeValues(params);
+  steps.push({
+    title: "Step 3: Calculate Beam Slope",
+    description: `Determine the slope (rotation) at key points along the beam.`,
+    result: `Max Slope = ${slope.maxValue.toFixed(4)}° at x = ${slope.maxPosition.toFixed(2)} m`
+  });
+  
+  // Calculate points for plotting
+  const deflectionPoints = calculateDeflectionPoints(params);
+  const slopePoints = calculateSlopePoints(params);
+  
+  return {
+    deflection,
+    slope,
+    steps,
+    deflectionPoints,
+    slopePoints
+  };
+};
