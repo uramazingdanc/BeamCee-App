@@ -1,3 +1,4 @@
+
 import { BeamParameters, Load, SlopeValues, DeflectionValues, CalculationResults } from "../types/beam";
 
 // Convert units for calculation
@@ -59,25 +60,21 @@ export const calculateReactions = (params: BeamParameters, loadIndex: number): {
       const R2 = (totalLoad * loadCenter) / span;
       const R1 = totalLoad - R2;
       return { R1, R2 };
-    }
-  
-  // Improved triangular load calculations
-  else if (load.type === 'triangular-load') {
-    const startPos = load.startPosition || 0;
-    const endPos = load.endPosition || length;
-    
-    // Find the overlap of the load with the supported span
-    const overlapStart = Math.max(startPos, leftSupport);
-    const overlapEnd = Math.min(endPos, rightSupport);
-    
-    if (overlapStart >= overlapEnd) {
-      // No overlap between load and supported span
-      return { R1: 0, R2: 0 };
-    }
-    
-    const loadWidth = endPos - startPos;
-    
-    if (beamType === 'simply-supported') {
+    } else if (load.type === 'triangular-load') {
+      const startPos = load.startPosition || 0;
+      const endPos = load.endPosition || length;
+      
+      // Find the overlap of the load with the supported span
+      const overlapStart = Math.max(startPos, leftSupport);
+      const overlapEnd = Math.min(endPos, rightSupport);
+      
+      if (overlapStart >= overlapEnd) {
+        // No overlap between load and supported span
+        return { R1: 0, R2: 0 };
+      }
+      
+      const loadWidth = endPos - startPos;
+      
       // Calculate total load (area of the triangle)
       const totalLoad = load.magnitude * loadWidth / 2;
       
@@ -90,8 +87,30 @@ export const calculateReactions = (params: BeamParameters, loadIndex: number): {
       const R2 = (totalLoad * adjustedCenter) / span;
       const R1 = totalLoad - R2;
       return { R1, R2 };
-    } else if (beamType === 'cantilever') {
+    }
+  } else if (beamType === 'cantilever') {
+    if (load.type === 'point-load' && load.position !== undefined) {
+      // For cantilever, calculate reaction and moment at fixed end
+      const R1 = load.magnitude;
+      const M1 = load.magnitude * load.position;
+      return { R1, R2: 0, M1 };
+    } else if (load.type === 'uniform-load') {
+      const startPos = load.startPosition || 0;
+      const endPos = load.endPosition || length;
+      
+      const loadLength = endPos - startPos;
+      const totalLoad = load.magnitude * loadLength;
+      const loadCenter = (startPos + endPos) / 2;
+      
+      const R1 = totalLoad;
+      const M1 = totalLoad * loadCenter;
+      return { R1, R2: 0, M1 };
+    } else if (load.type === 'triangular-load') {
       // For cantilever, calculate moment at fixed end
+      const startPos = load.startPosition || 0;
+      const endPos = load.endPosition || length;
+      const loadWidth = endPos - startPos;
+      
       const totalLoad = load.magnitude * loadWidth / 2;
       const loadCenter = endPos - loadWidth / 3;
       const lever = loadCenter - leftSupport;
@@ -99,8 +118,60 @@ export const calculateReactions = (params: BeamParameters, loadIndex: number): {
       const R1 = totalLoad;
       const M1 = totalLoad * lever;
       return { R1, R2: 0, M1 };
-    } else if (beamType === 'fixed') {
+    }
+  } else if (beamType === 'fixed') {
+    if (load.type === 'point-load' && load.position !== undefined) {
+      // For fixed beam with point load
+      const a = load.position;
+      const L = length;
+      
+      const R1 = load.magnitude * (1 - a/L);
+      const R2 = load.magnitude * (a/L);
+      const M1 = -load.magnitude * a * (L - a) * (L - a) / (L * L);
+      const M2 = load.magnitude * a * a * (L - a) / (L * L);
+      
+      return { R1, R2, M1, M2 };
+    } else if (load.type === 'uniform-load') {
+      const startPos = load.startPosition || 0;
+      const endPos = load.endPosition || length;
+      
+      if (endPos - startPos >= length) {
+        // Full uniform load on fixed beam
+        const w = load.magnitude;
+        const L = length;
+        
+        const R1 = w * L / 2;
+        const R2 = w * L / 2;
+        const M1 = -w * L * L / 12;
+        const M2 = w * L * L / 12;
+        
+        return { R1, R2, M1, M2 };
+      } else {
+        // Partial uniform load on fixed beam - approximate
+        const loadLength = endPos - startPos;
+        const w = load.magnitude;
+        const totalLoad = w * loadLength;
+        const loadCenter = (startPos + endPos) / 2;
+        const L = length;
+        
+        const R1 = totalLoad * (1 - loadCenter/L);
+        const R2 = totalLoad * (loadCenter/L);
+        
+        // Simplified moment calculations
+        const a = loadCenter;
+        const b = loadLength / 2;
+        
+        const M1 = -w * b * (L - a) * (L - a) * (L + 2*a) / (12 * L);
+        const M2 = w * b * a * a * (3*L - 2*a) / (12 * L);
+        
+        return { R1, R2, M1, M2 };
+      }
+    } else if (load.type === 'triangular-load') {
       // For fixed beam with triangular load
+      const startPos = load.startPosition || 0;
+      const endPos = load.endPosition || length;
+      const loadWidth = endPos - startPos;
+      
       const totalLoad = load.magnitude * loadWidth / 2;
       const loadCenter = endPos - loadWidth / 3;
       const adjustedCenter = loadCenter - leftSupport;
@@ -172,6 +243,27 @@ export const calculateBendingMoment = (params: BeamParameters, x: number): numbe
             totalMoment -= w * loadLength * (x - loadCenter);
           }
         }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || params.length;
+        
+        if (x >= startPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= endPos) {
+            // Portion of triangular load up to x
+            const x1 = x - startPos;
+            const partialHeight = w * x1 / loadWidth;
+            // Moment for partial triangular load
+            totalMoment -= partialHeight * x1 * x1 / 6;
+          } else {
+            // Full triangular load contribution
+            const totalLoad = w * loadWidth / 2;
+            const loadCenter = endPos - loadWidth / 3;
+            totalMoment -= totalLoad * (x - loadCenter);
+          }
+        }
       }
     }
   } else if (beamType === 'cantilever') {
@@ -196,6 +288,27 @@ export const calculateBendingMoment = (params: BeamParameters, x: number): numbe
             // Partial distributed load from x to endPos
             const loadLength = endPos - x;
             totalMoment += w * loadLength * loadLength / 2;
+          }
+        }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || params.length;
+        
+        if (x <= endPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= startPos) {
+            // Full triangular load
+            const totalLoad = w * loadWidth / 2;
+            const loadCenter = endPos - loadWidth / 3;
+            totalMoment += totalLoad * (loadCenter - x);
+          } else {
+            // Partial triangular load from x to endPos
+            const remainingWidth = endPos - x;
+            const remainingHeight = w * remainingWidth / loadWidth;
+            // Moment for the remaining triangular section
+            totalMoment += remainingHeight * remainingWidth * remainingWidth / 6;
           }
         }
       }
@@ -228,6 +341,27 @@ export const calculateBendingMoment = (params: BeamParameters, x: number): numbe
             const loadLength = endPos - startPos;
             const loadCenter = startPos + loadLength / 2;
             totalMoment -= w * loadLength * (x - loadCenter);
+          }
+        }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || params.length;
+        
+        if (x >= startPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= endPos) {
+            // Portion of triangular load up to x
+            const x1 = x - startPos;
+            const partialHeight = w * x1 / loadWidth;
+            // Moment for partial triangular load
+            totalMoment -= partialHeight * x1 * x1 / 6;
+          } else {
+            // Full triangular load contribution
+            const totalLoad = w * loadWidth / 2;
+            const loadCenter = endPos - loadWidth / 3;
+            totalMoment -= totalLoad * (x - loadCenter);
           }
         }
       }
@@ -268,6 +402,26 @@ export const calculateShearForce = (params: BeamParameters, x: number): number =
             totalShear -= w * (endPos - startPos);
           }
         }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        
+        if (x > startPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= endPos) {
+            // Portion of triangular load up to x
+            // For a triangular load, the partial area is non-linear
+            const x1 = x - startPos;
+            const partialHeight = w * x1 / loadWidth;
+            // Area of partial triangle = 1/2 * base * height
+            totalShear -= partialHeight * x1 / 2;
+          } else {
+            // Full triangular load
+            totalShear -= w * loadWidth / 2;
+          }
+        }
       }
     }
   } else if (beamType === 'cantilever') {
@@ -289,6 +443,25 @@ export const calculateShearForce = (params: BeamParameters, x: number): number =
           } else {
             // Partial load to the right
             totalShear += w * (endPos - x);
+          }
+        }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        
+        if (x < endPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= startPos) {
+            // Full load to the right
+            totalShear += w * loadWidth / 2;
+          } else {
+            // Partial load to the right
+            const remainingWidth = endPos - x;
+            const partialHeight = w * remainingWidth / loadWidth;
+            // Area of partial triangle
+            totalShear += partialHeight * remainingWidth / 2;
           }
         }
       }
@@ -317,46 +490,24 @@ export const calculateShearForce = (params: BeamParameters, x: number): number =
             totalShear -= w * (endPos - startPos);
           }
         }
-      }
-    }
-  }
-  
-  // Improved triangular load shear force calculations
-  else if (load.type === 'triangular-load') {
-    const startPos = load.startPosition || 0;
-    const endPos = load.endPosition || length;
-    
-    if (beamType === 'simply-supported' || beamType === 'fixed') {
-      if (x > startPos) {
-        const w = load.magnitude;
-        const loadWidth = endPos - startPos;
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
         
-        if (x <= endPos) {
-          // Portion of triangular load up to x
-          // For a triangular load, the partial area is non-linear
-          const x1 = x - startPos;
-          const partialHeight = w * x1 / loadWidth;
-          // Area of partial triangle = 1/2 * base * height
-          totalShear -= partialHeight * x1 / 2;
-        } else {
-          // Full triangular load
-          totalShear -= w * loadWidth / 2;
-        }
-      }
-    } else if (beamType === 'cantilever') {
-      if (x < endPos) {
-        const w = load.magnitude;
-        const loadWidth = endPos - startPos;
-        
-        if (x <= startPos) {
-          // Full load to the right
-          totalShear += w * loadWidth / 2;
-        } else {
-          // Partial load to the right
-          const remainingWidth = endPos - x;
-          const partialHeight = w * remainingWidth / loadWidth;
-          // Area of partial triangle
-          totalShear += partialHeight * remainingWidth / 2;
+        if (x > startPos) {
+          const w = load.magnitude;
+          const loadWidth = endPos - startPos;
+          
+          if (x <= endPos) {
+            // Portion of triangular load up to x
+            const x1 = x - startPos;
+            const partialHeight = w * x1 / loadWidth;
+            // Area of partial triangle = 1/2 * base * height
+            totalShear -= partialHeight * x1 / 2;
+          } else {
+            // Full triangular load
+            totalShear -= w * loadWidth / 2;
+          }
         }
       }
     }
@@ -442,6 +593,35 @@ export const calculateDeflectionAt = (params: BeamParameters, position: number):
             totalDeflection += (equivalentPointLoad * position * (L - position) * (L + position - 2*loadCenter)) / (6 * EI * L);
           }
         }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const w = load.magnitude; // Maximum intensity
+        const a = startPos;
+        const b = endPos;
+        const loadWidth = b - a;
+        
+        // For triangular load on simply supported beam
+        // Using modified formulas for triangular load (increasing from left to right)
+        const L = length;
+        
+        if (position <= a) {
+          // Before the load starts
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = b - loadWidth / 3;
+          totalDeflection += (totalLoad * position * (L*L - position*position - loadCenter*loadCenter)) / (6 * EI * L);
+        } else if (position <= b) {
+          // Within the load
+          const x1 = position - a;
+          // Complex integration result for position within triangular load
+          totalDeflection += (w * position * (L-position) * (L+position) * loadWidth) / (60 * EI * L) - 
+                           (w * x1 * x1 * x1 * (10*L - 15*position + 6*x1)) / (120 * EI * L * loadWidth);
+        } else {
+          // After the load ends
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = b - loadWidth / 3;
+          totalDeflection += (totalLoad * position * (L-position) * (L+position - 2*loadCenter)) / (6 * EI * L);
+        }
       }
     }
   } else if (beamType === 'cantilever') {
@@ -475,6 +655,30 @@ export const calculateDeflectionAt = (params: BeamParameters, position: number):
           } else {
             totalDeflection += (equivalentPointLoad * loadCenter * loadCenter * (3*position - loadCenter)) / (6 * EI);
           }
+        }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const w = load.magnitude;
+        const a = startPos;
+        const b = endPos;
+        const loadWidth = b - a;
+        
+        // For triangular load on cantilever beam
+        if (position <= a) {
+          // Before the load starts
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = b - loadWidth / 3;
+          totalDeflection += (totalLoad * position * position * (3*loadCenter - position)) / (6 * EI);
+        } else if (position <= b) {
+          // Within the load
+          // Complex integration for position within triangular load
+          const x1 = position - a;
+          totalDeflection += (w * position * position * position * loadWidth) / (24 * EI) - 
+                           (w * x1 * x1 * x1 * (4*position - x1)) / (24 * EI * loadWidth);
+        } else {
+          // After the load ends
+          // No additional deflection after the load ends on a cantilever
         }
       }
     }
@@ -510,78 +714,34 @@ export const calculateDeflectionAt = (params: BeamParameters, position: number):
             totalDeflection -= (equivalentPointLoad * (position - loadCenter) * (position - loadCenter) * (position - loadCenter)) / (6 * EI);
           }
         }
-      }
-    }
-  }
-  
-  // Improved triangular load deflection calculations
-  else if (load.type === 'triangular-load') {
-    const startPos = load.startPosition || 0;
-    const endPos = load.endPosition || length;
-    const w = load.magnitude; // Maximum intensity
-    const a = startPos;
-    const b = endPos;
-    const loadWidth = b - a;
-    
-    if (beamType === 'simply-supported') {
-      // For triangular load on simply supported beam
-      // Using modified formulas for triangular load (increasing from left to right)
-      const L = length;
-      
-      if (position <= a) {
-        // Before the load starts
-        const totalLoad = w * loadWidth / 2;
-        const loadCenter = b - loadWidth / 3;
-        totalDeflection += (totalLoad * position * (L*L - position*position - loadCenter*loadCenter)) / (6 * EI * L);
-      } else if (position <= b) {
-        // Within the load
-        const x1 = position - a;
-        // Complex integration result for position within triangular load
-        totalDeflection += (w * position * (L-position) * (L+position) * loadWidth) / (60 * EI * L) - 
-                           (w * x1 * x1 * x1 * (10*L - 15*position + 6*x1)) / (120 * EI * L * loadWidth);
-      } else {
-        // After the load ends
-        const totalLoad = w * loadWidth / 2;
-        const loadCenter = b - loadWidth / 3;
-        totalDeflection += (totalLoad * position * (L-position) * (L+position - 2*loadCenter)) / (6 * EI * L);
-      }
-    } else if (beamType === 'cantilever') {
-      // For triangular load on cantilever beam
-      if (position <= a) {
-        // Before the load starts
-        const totalLoad = w * loadWidth / 2;
-        const loadCenter = b - loadWidth / 3;
-        totalDeflection += (totalLoad * position * position * (3*loadCenter - position)) / (6 * EI);
-      } else if (position <= b) {
-        // Within the load
-        // Complex integration for position within triangular load
-        const x1 = position - a;
-        totalDeflection += (w * position * position * position * loadWidth) / (24 * EI) - 
-                           (w * x1 * x1 * x1 * (4*position - x1)) / (24 * EI * loadWidth);
-      } else {
-        // After the load ends
-        // No additional deflection after the load ends on a cantilever
-      }
-    } else if (beamType === 'fixed') {
-      // For triangular load on fixed-fixed beam
-      const L = length;
-      
-      if (position <= a) {
-        // Before the load starts
-        const totalLoad = w * loadWidth / 2;
-        const loadCenter = b - loadWidth / 3;
-        totalDeflection += (totalLoad * position * position * (3*L - position) * loadCenter) / (6 * EI * L * L);
-      } else if (position <= b) {
-        // Within the load
-        const x1 = position - a;
-        // Complex integration result for position within triangular load on fixed beam
-        totalDeflection += (w * position * position * (L-position) * (L-position) * loadWidth) / (120 * EI * L * L) - 
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const w = load.magnitude; // Maximum intensity
+        const a = startPos;
+        const b = endPos;
+        const loadWidth = b - a;
+        
+        // For triangular load on fixed-fixed beam
+        const L = length;
+        
+        if (position <= a) {
+          // Before the load starts
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = b - loadWidth / 3;
+          totalDeflection += (totalLoad * position * position * (3*L - position) * loadCenter) / (6 * EI * L * L);
+        } else if (position <= b) {
+          // Within the load
+          const x1 = position - a;
+          // Complex integration result for position within triangular load on fixed beam
+          totalDeflection += (w * position * position * (L-position) * (L-position) * loadWidth) / (120 * EI * L * L) - 
                            (w * x1 * x1 * x1 * position * (L-position)) / (60 * EI * L * L * loadWidth);
-      } else {
-        // After the load ends
-        const totalLoad = w * loadWidth / 2;
-        const loadCenter = b - loadWidth / 3;
-        totalDeflection += (totalLoad * position * position * (L-position) * (L-position) * loadCenter) / (6 * EI * L * L * L);
+        } else {
+          // After the load ends
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = b - loadWidth / 3;
+          totalDeflection += (totalLoad * position * position * (L-position) * (L-position) * loadCenter) / (6 * EI * L * L * L);
+        }
       }
     }
   }
@@ -661,8 +821,7 @@ export const calculateSlopeAt = (params: BeamParameters, position: number): numb
             totalSlope += (totalLoad * (L - x) * (midPoint / L)) / (EI);
           }
         }
-      }
-      else if (load.type === 'triangular-load') {
+      } else if (load.type === 'triangular-load') {
         const startPos = load.startPosition || 0;
         const endPos = load.endPosition || length;
         
@@ -741,7 +900,84 @@ export const calculateSlopeAt = (params: BeamParameters, position: number): numb
             totalSlope += 0;
           }
         }
-      }
-      else if (load.type === 'triangular-load') {
+      } else if (load.type === 'triangular-load') {
         const startPos = load.startPosition || 0;
-        const end
+        const endPos = load.endPosition || length;
+        const w = load.magnitude;
+        const loadWidth = endPos - startPos;
+        
+        if (position <= startPos) {
+          // Point before the triangular load
+          const totalLoad = w * loadWidth / 2;
+          const loadCenter = endPos - loadWidth / 3;
+          totalSlope += (totalLoad * (2 * loadCenter - position)) / (2 * EI);
+        } else if (position <= endPos) {
+          // Point within the triangular load
+          // The height of the triangle at position
+          const x1 = position - startPos;
+          const heightAtPosition = w * x1 / loadWidth;
+          // Slope contribution from the remaining triangular load
+          const remainingWidth = endPos - position;
+          totalSlope += (heightAtPosition * remainingWidth * remainingWidth) / (6 * EI);
+        } else {
+          // Point after the triangular load (no slope contribution)
+          totalSlope += 0;
+        }
+      }
+    }
+  } else if (beamType === 'fixed') {
+    for (const load of loads) {
+      if (load.type === 'point-load' && load.position !== undefined) {
+        const a = load.position;
+        const L = length;
+        
+        // Slope formula for fixed beam with point load
+        if (position <= a) {
+          totalSlope += (load.magnitude * a * position * (L - a - position)) / (2 * EI * L);
+        } else {
+          totalSlope += (load.magnitude * a * (L - position) * (position - a)) / (2 * EI * L);
+        }
+      } else if (load.type === 'uniform-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const w = load.magnitude;
+        const L = length;
+        
+        if (endPos - startPos >= length) {
+          // Full uniform load on fixed beam
+          totalSlope += (w * position * (L - position) * (L - 2 * position)) / (12 * EI);
+        } else {
+          // Partial uniform load - simplified approach
+          const loadLength = endPos - startPos;
+          const loadCenter = startPos + loadLength / 2;
+          const totalLoad = w * loadLength;
+          
+          // Simplified slope calculation for partial uniform load
+          if (position <= loadCenter) {
+            totalSlope += (totalLoad * position * (L - loadCenter - position / 3)) / (2 * EI * L);
+          } else {
+            totalSlope += (totalLoad * (L - position) * (position - loadCenter / 3)) / (2 * EI * L);
+          }
+        }
+      } else if (load.type === 'triangular-load') {
+        const startPos = load.startPosition || 0;
+        const endPos = load.endPosition || length;
+        const w = load.magnitude;
+        const L = length;
+        const loadWidth = endPos - startPos;
+        
+        // Simplified slope calculation for triangular load on fixed beam
+        const totalLoad = w * loadWidth / 2;
+        const loadCenter = endPos - loadWidth / 3;
+        
+        if (position <= loadCenter) {
+          totalSlope += (totalLoad * position * (L - loadCenter - position / 3)) / (2 * EI * L);
+        } else {
+          totalSlope += (totalLoad * (L - position) * (position - loadCenter / 3)) / (2 * EI * L);
+        }
+      }
+    }
+  }
+  
+  return totalSlope;
+};
