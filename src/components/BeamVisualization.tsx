@@ -44,14 +44,16 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
     const startX = 50;
     const beamY = 150;
     
-    // Find max deflection for scaling
+    // Find max deflection for scaling (safely check if array is not empty)
     let maxDeflection = 0;
-    deflectionPoints.forEach(point => {
-      const absDeflection = Math.abs(point.y);
-      if (absDeflection > maxDeflection) {
-        maxDeflection = absDeflection;
-      }
-    });
+    if (deflectionPoints && deflectionPoints.length > 0) {
+      deflectionPoints.forEach(point => {
+        const absDeflection = Math.abs(point.y);
+        if (absDeflection > maxDeflection) {
+          maxDeflection = absDeflection;
+        }
+      });
+    }
     
     // Calculate deflection scale
     const deflectionScale = maxDeflection > 0 ? 80 / maxDeflection : 1;
@@ -230,21 +232,23 @@ const BeamVisualization: React.FC<BeamVisualizationProps> = ({
       }
     });
     
-    // Draw deflected beam
-    ctx.beginPath();
-    ctx.strokeStyle = '#ff1ba7';
-    ctx.lineWidth = 3;
-    
-    const firstPoint = deflectionPoints[0];
-    ctx.moveTo(startX + firstPoint.x * xScale, beamY - firstPoint.y * deflectionScale);
-    
-    deflectionPoints.forEach((point, index) => {
-      if (index > 0) {
-        ctx.lineTo(startX + point.x * xScale, beamY - point.y * deflectionScale);
-      }
-    });
-    
-    ctx.stroke();
+    // Draw deflected beam ONLY if there are valid deflection points
+    if (deflectionPoints && deflectionPoints.length > 0) {
+      ctx.beginPath();
+      ctx.strokeStyle = '#ff1ba7';
+      ctx.lineWidth = 3;
+      
+      const firstPoint = deflectionPoints[0];
+      ctx.moveTo(startX + firstPoint.x * xScale, beamY - firstPoint.y * deflectionScale);
+      
+      deflectionPoints.forEach((point, index) => {
+        if (index > 0) {
+          ctx.lineTo(startX + point.x * xScale, beamY - point.y * deflectionScale);
+        }
+      });
+      
+      ctx.stroke();
+    }
     
     // Draw scale and axis labels
     ctx.fillStyle = '#000000';
